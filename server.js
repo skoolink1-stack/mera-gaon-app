@@ -68,6 +68,7 @@ app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
         await newUser.save();
         res.json({ success: true, message: 'अकाउंट बन गया!', user: newUser });
     } catch (error) {
+        console.error("रजिस्ट्रेशन में एरर आया:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
