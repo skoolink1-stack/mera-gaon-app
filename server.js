@@ -14,7 +14,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-app.use(cors({ origin: 'https://mera-gaon-lpdrhjegc-mera-gaon.vercel.app' }));
+app.use(cors({ origin: 'https://mera-gaon-app.vercel.app' }));
 const path = require('path'); 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
