@@ -407,6 +407,12 @@ cron.schedule('0 0 * * *', async () => {
     }
 });
 
+// Global Error Handler (Multer/Cloudinary के एरर पकड़ने के लिए)
+app.use((err, req, res, next) => {
+    console.error("🔥 Server Crash Error:", err);
+    res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
+});
+
 app.listen(PORT, () => {
     console.log(`🚀 सर्वर http://localhost:${PORT} पर लाइव है`);
 });
