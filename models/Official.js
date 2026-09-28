@@ -11,7 +11,7 @@ const officialSchema = new mongoose.Schema({
         enum: ['पंचायत', 'जल (PHED)', 'सड़क (PWD)', 'बिजली', 'शिक्षा', 'राशन/PDS', 'BDO', 'DC/SDM']
     },
     name: { type: String, required: true },
-    email: { type: String, required: true },
+    email: { type: String },
     phone: { type: String, required: true },
     district: { type: String, required: true },
     block: { type: String },

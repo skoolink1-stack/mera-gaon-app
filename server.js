@@ -6,6 +6,7 @@ const multer = require('multer');
 const cron = require('node-cron');
 const Complaint = require('./models/Complaint');
 const Official = require('./models/Official');
+const VillageInfo = require('./models/VillageInfo');
 const bcrypt = require('bcrypt');
 const { sendComplaintEmail } = require('./mailer');
 const User = require('./models/User');
@@ -411,6 +412,81 @@ cron.schedule('0 0 * * *', async () => {
 app.use((err, req, res, next) => {
     console.error("🔥 Server Crash Error:", err);
     res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
+});
+// --- गाँव के असली आँकड़े ---
+app.get('/api/village/stats', async (req, res) => {
+    try {
+        const { district, village } = req.query;
+        const cFilter = {};
+        const uFilter = { isVerified: true };
+        if (district) { cFilter['location.district'] = district; uFilter.district = district; }
+        if (village)  { cFilter['location.village'] = village;   uFilter.village = village; }
+
+        const total = await Complaint.countDocuments({ ...cFilter, status: { $ne: 'Withdrawn' } });
+        const resolved = await Complaint.countDocuments({ ...cFilter, status: 'Resolved' });
+        const members = await User.countDocuments(uFilter);
+
+        res.json({ total, resolved, members });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// --- क्या इस यूज़र को "एडमिन बनें?" popup दिखाना है? ---
+app.get('/api/village/status', async (req, res) => {
+    try {
+        const { district, block, village, userId } = req.query;
+
+        const sarpanch = await Official.findOne({ level: 1, department: 'पंचायत', district, block, village });
+        if (sarpanch) return res.json({ hasSarpanch: true, showPrompt: false });
+
+        const info = await VillageInfo.findOne({ district, block, village });
+        const declined = info ? info.declinedUsers.includes(userId) : false;
+
+        res.json({ hasSarpanch: false, showPrompt: !declined });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// --- यूज़र ने "नहीं" कहा ---
+app.post('/api/village/decline', async (req, res) => {
+    try {
+        const { district, block, village, userId } = req.body;
+        await VillageInfo.findOneAndUpdate(
+            { district, block, village },
+            { $addToSet: { declinedUsers: userId } },
+            { upsert: true, new: true }
+        );
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// --- सरपंच की जानकारी सेव करना ---
+app.post('/api/village/sarpanch', async (req, res) => {
+    try {
+        const { district, block, village, name, phone, email } = req.body;
+        if (!name || !name.trim()) {
+            return res.status(400).json({ success: false, error: 'सरपंच का नाम ज़रूरी है' });
+        }
+
+        const filter = { level: 1, department: 'पंचायत', district, block, village };
+
+        // पहले से जानकारी दर्ज है तो कोई दोबारा बदल न सके
+        const existing = await Official.findOne(filter);
+        if (existing) {
+            return res.status(409).json({ success: false, error: 'इस गाँव के सरपंच की जानकारी पहले से दर्ज है' });
+        }
+
+        const official = await Official.create({
+            ...filter, name: name.trim(), phone: phone || '', email: email || ''
+        });
+        res.json({ success: true, message: 'सरपंच की जानकारी सेव हो गई!', official });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 app.listen(PORT, () => {

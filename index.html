@@ -379,6 +379,11 @@
   .comment-item { display:flex; flex-direction:column; background:var(--card); padding:10px; border-radius:8px; border:1px solid var(--paper-line); }
   .comment-item .c-head { display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink-soft); margin-bottom:4px; }
   .comment-item .c-text { font-size:13.5px; margin:0; line-height:1.4; color:#333; }
+  .blink-dot{
+  position:absolute; top:-2px; right:-4px; width:10px; height:10px;
+  background:#e53935; border-radius:50%; animation:blinkDot 1s infinite;
+}
+@keyframes blinkDot{ 0%,100%{opacity:1; transform:scale(1);} 50%{opacity:0.25; transform:scale(0.8);} }
 
 </style>
 </head>
@@ -459,14 +464,20 @@
       <div style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.25); border-radius:8px; padding:6px 12px; font-size:14px;">
         📍 <span id="headerVillageName">रामपुर खेड़ा, हिसार</span>
       </div>
-      <button onclick="toggleMenu()" style="background:none; border:none; color:white; font-size:26px; cursor:pointer;">☰</button>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <button id="bellIconBtn" onclick="openSarpanchForm()" style="display:none; position:relative; background:none; border:none; font-size:24px; cursor:pointer;">
+          🔔<span class="blink-dot"></span>
+        </button>
+        <button id="sarpanchIconBtn" onclick="openSarpanchForm()" style="display:none; position:relative; background:none; border:none; color:white; font-size:24px; cursor:pointer;">🏛️<span class="blink-dot"></span></button>
+        <button onclick="toggleMenu()" style="background:none; border:none; color:white; font-size:26px; cursor:pointer;">☰</button>
+      </div>
     </div>
   </header>
 
   <div class="stats-strip">
-    <div class="stat"><div class="num" id="totalComplaints">37</div><div class="lbl">दर्ज शिकायतें</div></div>
-    <div class="stat"><div class="num">14</div><div class="lbl">हल हुईं</div></div>
-    <div class="stat"><div class="num">212</div><div class="lbl">जुड़े लोग</div></div>
+    <div class="stat"><div class="num" id="totalComplaints">0</div><div class="lbl">दर्ज शिकायतें</div></div>
+    <div class="stat"><div class="num" id="statResolved">0</div><div class="lbl">हल हुईं</div></div>
+    <div class="stat"><div class="num" id="statMembers">0</div><div class="lbl">जुड़े लोग</div></div>
   </div>
 
   <div class="tabs" id="categoryTabs">
@@ -631,7 +642,7 @@
       <button class="back-btn" onclick="closeBaithak()">←</button>
       <div style="display:flex; flex-direction:column;">
         <span style="font-size:18px; font-weight:bold;">गाँव की बैठक</span>
-        <span style="font-size:12px; font-weight:normal; opacity:0.8;">212 लोग जुड़े हैं</span>
+        <span id="baithakMembers" style="font-size:12px; font-weight:normal; opacity:0.8;">0 लोग जुड़े हैं</span>>
       </div>
     </div>
     <div class="chat-body" id="chatBody">
@@ -774,6 +785,7 @@
   let loggedInUserName = "जागरूक नागरिक";
   let loggedInVillage = "";      
   let loggedInDistrict = "";
+  let loggedInUserId = "";
   let loggedInBlock = "";
   let currentActiveCard = null;
   
@@ -838,6 +850,7 @@ async function confirmWithdraw(id) {
   // --- MongoDB से शिकायतें लोड करके स्क्रीन पर दिखाने का फंक्शन ---
   // 1. सर्वर से शिकायतें मंगाकर रेंडर करने का फ़ंक्शन
 async function loadComplaintsFromDB() {
+  loadVillageStats();
   try {
     const res = await fetch(`https://mera-gaon-app.onrender.com/api/complaints?village=${encodeURIComponent(loggedInVillage)}`);
     const data = await res.json();
@@ -976,6 +989,7 @@ function renderComplaints(complaints) {
         loggedInUserRole = result.user.role === 'citizen' ? '' : result.user.role;
         loggedInVillage = result.user.village;      
         loggedInDistrict = result.user.district;
+        loggedInUserId = result.user._id;
         loggedInBlock = result.user.block;
         
         document.getElementById('loginScreen').style.display = 'none';
@@ -987,6 +1001,7 @@ function renderComplaints(complaints) {
           document.getElementById('mainApp').style.display = 'block';
           loadComplaintsFromDB();
           document.getElementById('headerVillageName').innerText = result.user.village + ", " + result.user.district;
+          checkVillageAdminPrompt();
         }
       } else {
         alert("❌ " + result.error);
@@ -1073,7 +1088,7 @@ function renderComplaints(complaints) {
       if(result.success) {
         // अधिकारी के लिए पेंडिंग स्क्रीन
         if(loggedInUserRole !== "") {
-           alert("⏳ आपका अकाउंट 'अधिकारी' के रूप में दर्ज हो गया है। टीम इसे वेरीफाई करेगी।");
+           alert("⏳ आपके दस्तावेज़ प्राप्त हो गए हैं।\n\nसुरक्षा के लिए, आपकी जानकारी और इलेक्शन सर्टिफिकेट हमारी एडमिन टीम के पास वेरिफिकेशन के लिए भेज दिया गया है।\nवेरीफाई होने के बाद ही आपको डैशबोर्ड का एक्सेस मिलेगा।");
            window.location.reload();
            return;
         }
@@ -1082,10 +1097,12 @@ function renderComplaints(complaints) {
         loggedInUserName = result.user.name;
         loggedInVillage = result.user.village;      
         loggedInDistrict = result.user.district;
+        loggedInUserId = result.user._id;
         loggedInBlock = result.user.block;
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('mainApp').style.display = 'block';
         document.getElementById('headerVillageName').innerText = result.user.village + ", " + result.user.district;
+        checkVillageAdminPrompt();
       } else {
         alert("❌ " + result.error); // अगर नंबर पहले से रजिस्टर है तो एरर देगा
       }
@@ -1380,6 +1397,97 @@ async function submitConfirmation(resolved) {
   document.getElementById('confirmModal').style.display = 'none';
   loadComplaintsFromDB();
 }
+const API_BASE = "https://mera-gaon-app.onrender.com";   // अपना Render लिंक (अलग हो तो वही डालना)
+let sarpanchFormSource = 'prompt';
+
+async function loadVillageStats() {
+  try {
+    const params = new URLSearchParams({ district: loggedInDistrict, village: loggedInVillage });
+    const res = await fetch(`${API_BASE}/api/village/stats?${params}`);
+    const s = await res.json();
+    document.getElementById('totalComplaints').innerText = s.total;
+    document.getElementById('statResolved').innerText = s.resolved;
+    document.getElementById('statMembers').innerText = s.members;
+    const bm = document.getElementById('baithakMembers');
+    if (bm) bm.innerText = `${s.members} लोग जुड़े हैं`;
+  } catch (e) { console.log('stats एरर:', e.message); }
+}
+
+async function checkVillageAdminPrompt() {
+  if (loggedInUserRole) return;   // अधिकारियों को popup नहीं दिखाना
+  try {
+    const params = new URLSearchParams({
+      district: loggedInDistrict, block: loggedInBlock || '',
+      village: loggedInVillage, userId: loggedInUserId
+    });
+    const res = await fetch(`${API_BASE}/api/village/status?${params}`);
+    const data = await res.json();
+    
+    // पुराने sarpanchIconBtn की जगह अब bellIconBtn इस्तेमाल होगा
+    document.getElementById('bellIconBtn').style.display = data.hasSarpanch ? 'none' : 'block';
+    
+    if (data.showPrompt) document.getElementById('adminPromptModal').style.display = 'flex';
+  } catch (e) { console.log('village status एरर:', e.message); }
+}
+
+function acceptAdmin() {
+  document.getElementById('adminPromptModal').style.display = 'none';
+  sarpanchFormSource = 'prompt';
+  document.getElementById('sarpanchFormModal').style.display = 'flex';
+}
+
+// नया फंक्शन: अगर यूज़र बाद में जानकारी भरना चाहे
+function remindLaterAdmin() {
+  document.getElementById('adminPromptModal').style.display = 'none';
+  document.getElementById('bellIconBtn').style.display = 'block'; 
+}
+
+async function declineAdmin() {
+  document.getElementById('adminPromptModal').style.display = 'none';
+  document.getElementById('bellIconBtn').style.display = 'none'; // घंटी का आइकॉन हटा दें
+  try {
+    await fetch(`${API_BASE}/api/village/decline`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ district: loggedInDistrict, block: loggedInBlock || '', village: loggedInVillage, userId: loggedInUserId })
+    });
+  } catch (e) { console.log(e.message); }
+}
+
+function openSarpanchForm() {
+  sarpanchFormSource = 'icon';
+  document.getElementById('sarpanchFormModal').style.display = 'flex';
+}
+
+function closeSarpanchForm() {
+  document.getElementById('sarpanchFormModal').style.display = 'none';
+  if (sarpanchFormSource === 'prompt') declineAdmin();
+}
+
+async function submitSarpanchInfo() {
+  const name = document.getElementById('spName').value.trim();
+  const phone = document.getElementById('spPhone').value.trim();
+  const email = document.getElementById('spEmail').value.trim();
+
+  if (!name) { alert('⚠️ सरपंच का नाम लिखना ज़रूरी है।'); return; }
+  if (phone && !/^\d{10}$/.test(phone)) { alert('⚠️ मोबाइल नंबर 10 अंकों का होना चाहिए।'); return; }
+  if (email && !/^\S+@\S+\.\S+$/.test(email)) { alert('⚠️ ईमेल सही फॉर्मेट में लिखें।'); return; }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/village/sarpanch`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ district: loggedInDistrict, block: loggedInBlock || '', village: loggedInVillage, name, phone, email })
+    });
+    const data = await res.json();
+
+    if (data.success || res.status === 409) {
+      alert(data.success ? '✅ ' + data.message : 'ℹ️ ' + data.error);
+      document.getElementById('sarpanchFormModal').style.display = 'none';
+      document.getElementById('bellIconBtn').style.display = 'none';   // जानकारी दर्ज हो गई, घंटी हटा दें
+    } else {
+      alert('❌ ' + data.error);
+    }
+  } catch (e) { alert('सर्वर से कनेक्ट नहीं हो पा रहा है।'); }
+}
 
   function openCommentsModal(id) {
     currentPostId = id;
@@ -1652,7 +1760,7 @@ async function submitWithdrawal(id) {
         document.getElementById('issueDesc').value = '';
         proofInput.value = "";
         document.getElementById('uploadUI').innerText = "📎 सबूत अपलोड करने के लिए यहाँ दबाएं";
-        
+        loadVillageStats();     
         closeModal();
       } else {
         alert("❌ सर्वर एरर: " + result.error);
@@ -1986,6 +2094,33 @@ function populateVillages() {
       <button onclick="submitConfirmation(true)" style="flex:1; padding:14px; background:var(--neem); color:white; border:none; border-radius:8px; font-weight:bold;">✅ हाँ</button>
       <button onclick="submitConfirmation(false)" style="flex:1; padding:14px; background:var(--red-flag); color:white; border:none; border-radius:8px; font-weight:bold;">❌ नहीं</button>
     </div>
+  </div>
+</div>
+<!-- 1. सरपंच की जानकारी पूछने वाला पॉपअप -->
+<div id="adminPromptModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:12px; padding:24px; max-width:340px; width:90%; text-align:center;">
+    <h3 style="margin-top:0; color:var(--ink); font-family:'Noto Serif Devanagari',serif;">सरपंच की जानकारी</h3>
+    <p style="font-size:14px; color:var(--ink-soft); line-height:1.5; margin-bottom:20px;">
+      क्या आपको अपने गाँव के सरपंच का नाम और नंबर पता है?<br>
+      <i style="font-size:12.5px; color:var(--neem);">("मेरी पंचायत" ऐप से आप अपने गाँव के सरपंच का डाटा यहाँ डाल सकते हैं)</i>
+    </p>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <button onclick="acceptAdmin()" style="padding:12px; background:var(--neem); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">✅ हाँ, अभी जानकारी भरें</button>
+      <button onclick="remindLaterAdmin()" style="padding:12px; background:#F2EAD3; color:var(--ink); border:none; border-radius:8px; font-weight:bold; cursor:pointer;">⏰ हाँ, पर बाद में भरूँगा</button>
+      <button onclick="declineAdmin()" style="padding:12px; background:#FFF0F0; color:var(--red-flag); border:none; border-radius:8px; font-weight:bold; cursor:pointer;">❌ नहीं, मुझे नहीं पता</button>
+    </div>
+  </div>
+</div>
+
+<!-- 2. सरपंच की जानकारी भरने का फॉर्म -->
+<div id="sarpanchFormModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:12px; padding:24px; max-width:340px; width:90%;">
+    <button onclick="closeSarpanchForm()" style="float:right; background:none; border:none; font-size:18px; cursor:pointer; color:var(--ink-soft);">✕</button>
+    <h3 style="margin-top:0; font-family:'Noto Serif Devanagari',serif;">सरपंच का विवरण</h3>
+    <div class="field"><label>सरपंच का नाम *</label><input type="text" id="spName" placeholder="पूरा नाम लिखें"></div>
+    <div class="field"><label>फ़ोन नंबर (वैकल्पिक)</label><input type="tel" id="spPhone" placeholder="10 अंकों का मोबाइल नंबर" maxlength="10"></div>
+    <div class="field"><label>ईमेल (वैकल्पिक)</label><input type="email" id="spEmail" placeholder="abc@gmail.com"></div>
+    <button class="submit-btn" style="margin-top:10px;" onclick="submitSarpanchInfo()">सुरक्षित करें</button>
   </div>
 </div>
 </body>
