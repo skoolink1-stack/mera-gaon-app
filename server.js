@@ -29,6 +29,16 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
+// --- CHAT MODEL ---
+const chatSchema = new mongoose.Schema({
+  village: { type: String, required: true }, // Sirf isi gaon ke logon ko dikhega
+  senderId: { type: String, required: true },
+  senderName: { type: String, required: true },
+  text: { type: String, required: true }
+}, { timestamps: true });
+
+const Chat = mongoose.model('Chat', chatSchema);
+
 // 2. Multer ko batana ki file Cloudinary mein 'MeraGaon' folder mein save karni hai
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
@@ -487,6 +497,81 @@ app.post('/api/village/sarpanch', async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
+});
+// ==========================================
+// 1. CHAT APIs (Gaon ki Baithak)
+// ==========================================
+
+// A. Chat mangwane ki API (Sirf specific gaon ki)
+app.get('/api/chat', async (req, res) => {
+  try {
+    const { village } = req.query;
+    if (!village) return res.status(400).json({ error: "गाँव का नाम नहीं मिला" });
+
+    // Sirf us gaon ke aakhri 100 message load karega
+    const messages = await Chat.find({ village: village })
+                               .sort({ createdAt: 1 })
+                               .limit(100);
+    res.json(messages);
+  } catch (error) {
+    console.error("Chat fetch error:", error);
+    res.status(500).json({ error: "चैट लोड नहीं हो पाई" });
+  }
+});
+
+// B. Naya message save karne ki API
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { village, senderId, senderName, text } = req.body;
+    if (!village || !text) return res.status(400).json({ error: "मैसेज खाली है" });
+
+    const newMsg = new Chat({ village, senderId, senderName, text });
+    await newMsg.save();
+    
+    res.json({ success: true, message: newMsg });
+  } catch (error) {
+    console.error("Chat save error:", error);
+    res.status(500).json({ error: "मैसेज नहीं गया" });
+  }
+});
+
+// ==========================================
+// 2. SUPPORT API (समर्थन)
+// ==========================================
+app.post('/api/complaints/:id/support', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: "यूज़र आईडी नहीं मिली" });
+
+    const complaint = await Complaint.findById(id);
+    if (!complaint) return res.status(404).json({ error: "शिकायत नहीं मिली" });
+
+    if (!complaint.supporters) complaint.supporters = [];
+
+    let isSupported = false;
+    const index = complaint.supporters.indexOf(userId);
+
+    if (index === -1) {
+      // Agar pehle support nahi kiya, toh add kar do
+      complaint.supporters.push(userId);
+      isSupported = true;
+    } else {
+      // Agar pehle se support kiya hai, toh wapas le lo (Toggle)
+      complaint.supporters.splice(index, 1);
+      isSupported = false;
+    }
+
+    await complaint.save();
+    res.json({ 
+      success: true, 
+      isSupported: isSupported, 
+      supportCount: complaint.supporters.length 
+    });
+  } catch (error) {
+    console.error("Support error:", error);
+    res.status(500).json({ error: "समर्थन अपडेट नहीं हो पाया" });
+  }
 });
 
 app.listen(PORT, () => {

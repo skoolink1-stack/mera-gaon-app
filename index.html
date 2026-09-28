@@ -911,7 +911,7 @@ function renderComplaints(complaints) {
             </button>
           ` : ''}
           <div class="actions">
-            <button class="btn-sm support" onclick="event.stopPropagation(); toggleSupport(this, 0)">🤝 समर्थन (0)</button>
+            <button class="btn-sm support" onclick="event.stopPropagation(); toggleSupport(this, '${c._id}')">🤝 समर्थन (0)</button>
           </div>
         </div>
       </div>
@@ -1127,17 +1127,40 @@ function renderComplaints(complaints) {
     }
   }
 
-  // --- Support Logic ---
-  function toggleSupport(btn, base){
-    const isSupported = btn.classList.contains('supported');
-    if(isSupported){
-      btn.classList.remove('supported');
-      btn.innerHTML = `🤝 समर्थन (${base})`;
-    } else {
-      btn.classList.add('supported');
-      btn.innerHTML = `🤝 समर्थन (${base + 1})`;
-    }
+  // --- असली समर्थन (Support Logic) ---
+async function toggleSupport(btn, complaintId) {
+  if (!loggedInUserId) {
+    alert("समर्थन करने के लिए लॉगिन ज़रूरी है!");
+    return;
   }
+
+  try {
+    // बैकएंड पर समर्थन टॉगल करने की API कॉल
+    const res = await fetch(`${API_BASE}/api/complaints/${complaintId}/support`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: loggedInUserId })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok) {
+      // डेटाबेस से जो नया काउंट आया, उसे बटन पर दिखाएं
+      if (data.isSupported) {
+        btn.classList.add('supported');
+        btn.style.background = "var(--neem)";
+        btn.style.color = "white";
+      } else {
+        btn.classList.remove('supported');
+        btn.style.background = "transparent";
+        btn.style.color = "var(--ink)";
+      }
+      btn.innerHTML = `🤝 समर्थन (${data.supportCount})`;
+    }
+  } catch (err) {
+    console.log("समर्थन अपडेट करने में एरर:", err);
+  }
+}
   function closeDetail() {
     const detailView = document.getElementById('detailView');
     const mainApp = document.getElementById('mainApp');
@@ -1489,12 +1512,9 @@ async function submitSarpanchInfo() {
   } catch (e) { alert('सर्वर से कनेक्ट नहीं हो पा रहा है।'); }
 }
 
-  function openCommentsModal(id) {
-    currentPostId = id;
-    openComments();
-  }
+  
 
-  let currentWithdrawId = null;
+let currentWithdrawId = null;
 
 // विड्रॉ मोडल खोलने के लिए
 function withdrawComplaint(id) {
@@ -1554,58 +1574,77 @@ async function submitWithdrawal(id) {
   }
 }
 
-  // --- Comments Logic ---
-  function openComments() {
-    renderComments();
-    document.getElementById('commentsModal').classList.add('open');
-    document.getElementById('cmOverlay').classList.add('open');
-  }
+  
 
   function closeComments() {
     document.getElementById('commentsModal').classList.remove('open');
     document.getElementById('cmOverlay').classList.remove('open');
   }
 
-  function renderComments() {
-    const body = document.getElementById('cmBody');
-    const comments = postCommentsData[currentPostId] || [];
-    
-    if(comments.length === 0) {
-      body.innerHTML = '<div style="text-align:center; color:var(--ink-soft); margin-top:30px;">अभी कोई राय नहीं है। पहली टिप्पणी करें!</div>';
-      return;
-    }
+  
 
-    body.innerHTML = comments.map(c => `
-      <div class="comment-item">
-        <div class="c-head"><span>${c.name}</span><span>${c.time}</span></div>
-        <p class="c-text">${c.text}</p>
+  // --- असली कमेंट्स (Comments Logic) ---
+async function openCommentsModal(id) {
+  currentPostId = id || currentPostId;
+  document.getElementById('commentsModal').classList.add('open');
+  document.getElementById('cmOverlay').classList.add('open');
+  
+  // सर्वर से कमेंट्स लोड करें
+  const body = document.getElementById('cmBody');
+  body.innerHTML = '<div style="text-align:center; padding:20px;">कमेंट्स लोड हो रहे हैं...⏳</div>';
+  
+  try {
+    const res = await fetch(`${API_BASE}/api/complaints/${currentPostId}`);
+    const data = await res.json();
+    renderComments(data.comments || []);
+  } catch (err) {
+    body.innerHTML = '<div style="text-align:center; color:red;">एरर आ गया।</div>';
+  }
+}
+
+function renderComments(commentsList) {
+  const body = document.getElementById('cmBody');
+  if (!commentsList || commentsList.length === 0) {
+    body.innerHTML = '<div style="text-align:center; color:var(--ink-soft); margin-top:30px;">अभी कोई राय नहीं है। पहली टिप्पणी करें!</div>';
+    return;
+  }
+
+  body.innerHTML = commentsList.map(c => `
+    <div class="comment-item">
+      <div class="c-head">
+        <span style="font-weight:bold;">${c.userName || 'नागरिक'}</span>
+        <span>${new Date(c.createdAt || Date.now()).toLocaleDateString('hi-IN')}</span>
       </div>
-    `).join('');
-  }
+      <p class="c-text">${c.text}</p>
+    </div>
+  `).join('');
+}
 
-  function addComment() {
-    const input = document.getElementById('newCommentInput');
-    const text = input.value.trim();
-    if(!text) return;
+async function addComment() {
+  const input = document.getElementById('newCommentInput');
+  const text = input.value.trim();
+  if (!text) return;
 
-    if(!postCommentsData[currentPostId]) {
-       postCommentsData[currentPostId] = [];
-    }
-
-    postCommentsData[currentPostId].push({
-       name: loggedInUserName,
-       time: "अभी-अभी",
-       text: text
+  try {
+    // सर्वर पर कमेंट भेजें
+    const res = await fetch(`${API_BASE}/api/complaints/${currentPostId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text, userName: loggedInUserName })
     });
-
-    input.value = "";
-    renderComments();
+    const data = await res.json();
     
-    const countText = document.getElementById('commentCountText');
-    if(countText) {
-        countText.innerText = `सभी ${postCommentsData[currentPostId].length} कमेंट देखें`;
+    if (res.ok) {
+      input.value = "";
+      openCommentsModal(currentPostId); // कमेंट्स दोबारा लोड करें
+    } else {
+      alert("❌ कमेंट सेव नहीं हुआ: " + (data.error || ""));
     }
+  } catch (err) {
+    alert("❌ सर्वर से कनेक्शन टूट गया।");
   }
+}
+
   function openLightbox(url) {
     document.getElementById('lightboxImg').src = url;
     document.getElementById('lightboxOverlay').style.display = 'flex';
@@ -1831,31 +1870,78 @@ function populateVillages() {
     document.getElementById('sidebarOverlay').classList.toggle('open');
   }
 
-  function openBaithak() {
-    toggleMenu(); 
-    document.getElementById('baithakScreen').classList.add('open');
-  }
+  // --- असली गाँव की बैठक (Chat Logic) ---
+let chatInterval; // लाइव चैट के लिए
+
+async function openBaithak() {
+  toggleMenu(); 
+  document.getElementById('baithakScreen').classList.add('open');
+  loadBaithakMessages();
   
-  function closeBaithak() {
-    document.getElementById('baithakScreen').classList.remove('open');
-  }
+  // हर 5 सेकंड में नए मैसेज चेक करें (Live feel के लिए)
+  chatInterval = setInterval(loadBaithakMessages, 5000);
+}
 
-  function sendChatMessage() {
-    const input = document.getElementById('chatInput');
-    const text = input.value.trim();
-    if(!text) return;
+function closeBaithak() {
+  document.getElementById('baithakScreen').classList.remove('open');
+  clearInterval(chatInterval); // बाहर आने पर रिफ्रेश बंद
+}
 
-    const chatBody = document.getElementById('chatBody');
-    const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-
-    const newMsg = document.createElement('div');
-    newMsg.className = 'msg sent';
-    newMsg.innerHTML = `<div class="text">${text}</div><div class="time">${time} <span style="color:#4FC3F7">✓✓</span></div>`;
+async function loadBaithakMessages() {
+  try {
+    const res = await fetch(`${API_BASE}/api/chat?village=${encodeURIComponent(loggedInVillage)}`);
+    const messages = await res.json();
     
-    chatBody.appendChild(newMsg);
-    input.value = '';
-    chatBody.scrollTop = chatBody.scrollHeight; 
+    const chatBody = document.getElementById('chatBody');
+    chatBody.innerHTML = '<div class="chat-date">आज</div>'; // क्लीयर करें
+    
+    messages.forEach(m => {
+      const isMe = m.senderId === loggedInUserId;
+      const time = new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      
+      chatBody.innerHTML += `
+        <div class="msg ${isMe ? 'sent' : 'received'}">
+          ${!isMe ? `<div class="sender">${m.senderName}</div>` : ''}
+          <div class="text">${m.text}</div>
+          <div class="time">${time} ${isMe ? '<span style="color:#4FC3F7">✓</span>' : ''}</div>
+        </div>
+      `;
+    });
+    chatBody.scrollTop = chatBody.scrollHeight; // स्क्रॉल सबसे नीचे रखें
+  } catch (err) {
+    console.log("चैट लोड एरर:", err);
   }
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  // तुरंत UI में दिखाएं (Fast UX)
+  const chatBody = document.getElementById('chatBody');
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  chatBody.innerHTML += `<div class="msg sent"><div class="text">${text}</div><div class="time">${time} ⏳</div></div>`;
+  chatBody.scrollTop = chatBody.scrollHeight;
+  input.value = '';
+
+  try {
+    // बैकएंड में सेव करें
+    await fetch(`${API_BASE}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        village: loggedInVillage, 
+        senderId: loggedInUserId, 
+        senderName: loggedInUserName, 
+        text: text 
+      })
+    });
+    loadBaithakMessages(); // कन्फर्म होने पर फिर से लोड करें
+  } catch (err) {
+    alert("मैसेज नहीं गया, इंटरनेट चेक करें!");
+  }
+}
 
   function openProfile() {
     toggleMenu(); 

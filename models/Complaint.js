@@ -6,6 +6,7 @@ const complaintSchema = new mongoose.Schema({
     description: { type: String, required: true },
     mediaUrls: [{ type: String }],
     status: { type: String, default: 'Pending' }, // Pending, Progress, Resolved, Withdrawn
+    supporters: { type: [String], default: [] },
     currentLevel: { type: Number, default: 1 }, // 1: सरपंच, 2: BDO, 3: DC
     escalationDeadline: { type: Date },
     location: {
