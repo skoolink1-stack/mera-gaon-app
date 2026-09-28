@@ -635,6 +635,7 @@
     <div class="menu-item" onclick="openProfile()">👤 मेरी प्रोफ़ाइल</div>
     <div class="menu-item" onclick="openBaithak()">💬 गाँव की बैठक (Chat)</div>
     <div class="menu-item" onclick="openSchemes()">📰 आम जानकारी और योजनाएं</div>
+    <div class="menu-item" onclick="logout()" style="color: var(--red-flag); border-top: 2px solid var(--paper-line); margin-top: auto;">🚪 लॉगआउट (Logout)</div>
   </div>
 
   <div class="chat-screen" id="baithakScreen">
@@ -1973,6 +1974,38 @@ async function sendChatMessage() {
   function closeProfile() {
     document.getElementById('profileScreen').classList.remove('open');
   }
+
+  // --- लॉगआउट लॉजिक ---
+function logout() {
+  // 1. यूज़र से कन्फर्म करवाएं
+  const confirmLogout = confirm("क्या आप सच में लॉगआउट करना चाहते हैं?");
+  if (!confirmLogout) return;
+
+  // 2. यूज़र की पहचान (Variables) को खाली करें
+  loggedInUserRole = "";
+  loggedInUserName = "जागरूक नागरिक";
+  loggedInVillage = "";      
+  loggedInDistrict = "";
+  loggedInUserId = "";
+  loggedInBlock = "";
+
+  // 3. हैमबर्गर मेनू (साइडबार) को बंद करें
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+
+  // 4. सारे खुले हुए पेज बंद करें और लॉगिन स्क्रीन को वापस ले आएं
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('officialDashboard').style.display = 'none';
+  
+  // लॉगिन स्क्रीन को फ्लेक्स (Flex) करें ताकि वह बीच में दिखे
+  document.getElementById('loginScreen').style.display = 'flex';
+
+  // 5. फॉर्म के पुराने भरे हुए डेटा को साफ कर दें
+  const loginPhone = document.getElementById('loginPhone');
+  const loginPwd = document.getElementById('loginPwd');
+  if(loginPhone) loginPhone.value = '';
+  if(loginPwd) loginPwd.value = '';
+}
 
   function toggleEditProfile() {
     const btn = document.getElementById('editProfileBtn');
