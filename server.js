@@ -62,17 +62,18 @@ mongoose.connect(mongoURI)
     .then(() => console.log('✅ MongoDB से कनेक्शन सफल!'))
     .catch(err => console.log('❌ MongoDB कनेक्शन एरर:', err));
 
-    // --- असली OTP भेजने की API (Fast2SMS) ---
+    
+// --- असली OTP भेजने की API (Fast2SMS) ---
 app.post('/api/auth/send-otp', async (req, res) => {
     const { phone } = req.body;
     if (!phone || phone.length !== 10) return res.status(400).json({ error: "सही नंबर डालें" });
 
-    // 4 अंकों का असली OTP बनाना
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    otpStore[phone] = otp; // OTP को मेमोरी में सेव कर लिया
+    // 4 अंकों का असली OTP बनाना (Fast2SMS को String चाहिए)
+    const otp = Math.floor(1000 + Math.random() * 9000).toString(); 
+    otpStore[phone] = otp; 
 
     try {
-        await axios.get('https://www.fast2sms.com/dev/bulkV2', {
+        const response = await axios.get('https://www.fast2sms.com/dev/bulkV2', {
             params: {
                 authorization: process.env.FAST2SMS_API_KEY,
                 variables_values: otp,
@@ -80,10 +81,12 @@ app.post('/api/auth/send-otp', async (req, res) => {
                 numbers: phone
             }
         });
-        console.log(`${phone} पर OTP भेज दिया गया है।`);
+        
+        console.log("Fast2SMS Response:", response.data);
         res.json({ success: true, message: "OTP भेज दिया गया है" });
     } catch (error) {
-        console.error("Fast2SMS Error:", error.message);
+        // अगर Fast2SMS की तरफ से कोई एरर आता है, तो उसे यहाँ प्रिंट करेंगे
+        console.error("Fast2SMS Error Details:", error.response ? error.response.data : error.message);
         res.status(500).json({ success: false, error: "OTP भेजने में समस्या आई" });
     }
 });
