@@ -449,7 +449,6 @@
     <!-- OTP सेक्शन -->
     <div id="otpSection" style="display:none; text-align:center;">
       <h3 style="margin-top:0;">OTP सत्यापित करें</h3>
-      <p style="font-size:13px; color:var(--ink-soft);">आपके नंबर पर 4 अंकों का कोड भेजा गया है। (डेमो: 1234 डालें)</p>
       <input type="text" id="otpInput" placeholder="----" maxlength="4" style="font-size:24px; text-align:center; letter-spacing:8px; padding:10px; width:150px; margin-bottom:15px; border:2px solid var(--paper-line); border-radius:6px; outline:none;">
       <button class="submit-btn" onclick="verifyOTP()">सत्यापित करें</button>
       <button style="background:none; border:none; color:var(--red-flag); margin-top:15px; cursor:pointer; font-weight:bold; font-size:13px;" onclick="cancelOTP()">← वापस जाएँ</button>
@@ -1043,71 +1042,61 @@ function renderComplaints(complaints) {
   }
 
   async function sendOTP() {
-  // 1. चेक करें कि HTML में सारी IDs सही स्पेलिंग के साथ मौजूद हैं या नहीं
-  if (!document.getElementById('regName')) return alert("❌ HTML में Name वाले बॉक्स की ID 'regName' नहीं है!");
-  if (!document.getElementById('regPhone')) return alert("❌ HTML में Phone वाले बॉक्स की ID 'regPhone' नहीं है!");
-  if (!document.getElementById('regDistrict')) return alert("❌ HTML में District वाले ड्रॉपडाउन की ID 'regDistrict' नहीं है!");
-  if (!document.getElementById('regBlock')) return alert("❌ HTML में Block वाले ड्रॉपडाउन की ID 'regBlock' नहीं है!");
-  if (!document.getElementById('regVillage')) return alert("❌ HTML में Village वाले ड्रॉपडाउन की ID 'regVillage' नहीं है!");
-  if (!document.getElementById('regPwd')) return alert("❌ HTML में Password वाले बॉक्स की ID 'regPwd' नहीं है!");
+    const name = document.getElementById('regName').value;
+    const phone = document.getElementById('regPhone').value;
+    const village = document.getElementById('regVillage').value;
+    const pwd = document.getElementById('regPwd').value;
+    const pwdC = document.getElementById('regPwdConfirm').value;
+    const idProof = document.getElementById('regIdProof').value;
+    const dist = document.getElementById('regDistrict').value;
+    const block = document.getElementById('regBlock').value;
 
-  // अगर सब सही मिला, तो उनकी वैल्यू निकालें
-  const name = document.getElementById('regName').value;
-  const phone = document.getElementById('regPhone').value;
-  const village = document.getElementById('regVillage').value;
-  const pwd = document.getElementById('regPwd').value;
-  const pwdC = document.getElementById('regPwdConfirm').value;
-  const dist = document.getElementById('regDistrict').value;   
-  const block = document.getElementById('regBlock').value;     
+    const roleDropdown = document.getElementById('regRole');
+    if(document.getElementById('officialFields').style.display === 'block') {
+        loggedInUserRole = roleDropdown.options[roleDropdown.selectedIndex].value;
+    } else {
+        loggedInUserRole = "";
+    }
 
-  // 2. खाली बॉक्स की चेकिंग (Validation)
-  if(!name || phone.length < 10 || !village || !pwd || !dist || !block) {
-    alert("⚠️ कृपया सभी ज़रूरी जानकारी (*) भरें।");
-    return;
-  }
+    if(!name || phone.length < 10 || !village || !pwd || !idProof || !dist || !block) {
+      alert("⚠️ कृपया सभी ज़रूरी जानकारी (*) भरें और आईडी अपलोड करें।");
+      return;
+    }
+    if(pwd.length < 6) {
+      alert("⚠️ पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।");
+      return;
+    }
+    if(pwd !== pwdC) {
+      alert("❌ आपके दोनों पासवर्ड आपस में मेल नहीं खा रहे हैं! कृपया दोबारा चेक करें।");
+      return;
+    }
 
-  if(pwd.length < 6) {
-    alert("⚠️ पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।");
-    return;
-  }
+    loggedInUserName = name;
 
-  if(pwd !== pwdC) {
-    alert("❌ आपके दोनों पासवर्ड आपस में मेल नहीं खा रहे हैं! कृपया दोबारा चेक करें।");
-    return;
-  }
-  
-  loggedInUserName = name; 
+    const btn = document.querySelector('#regForm .submit-btn');
+    btn.innerText = "⏳ OTP भेजा जा रहा है...";
+    btn.disabled = true;
 
-  // 3. असली OTP भेजना (Fast2SMS API)
-  const submitBtn = document.querySelector('#regForm .submit-btn');
-  const originalText = submitBtn.innerText;
-  
-  submitBtn.innerText = "⏳ OTP भेज रहे हैं...";
-  submitBtn.disabled = true;
-  submitBtn.style.background = "#8a8a8a";
+    try {
+        const res = await fetch(`${API_BASE}/api/auth/send-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone })
+        });
+        const data = await res.json();
 
-  try {
-      const res = await fetch(`${API_BASE}/api/auth/send-otp`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: phone })
-      });
-      const data = await res.json();
-      
-      if(data.success) {
-          document.getElementById('regForm').style.display = 'none';
-          document.getElementById('otpSection').style.display = 'block';
-          document.getElementById('otpInput').value = ''; 
-      } else {
-          alert("❌ " + data.error);
-      }
-  } catch (err) {
-      alert("❌ सर्वर से कनेक्ट नहीं हो पा रहा है।");
-  } finally {
-      submitBtn.innerText = originalText;
-      submitBtn.disabled = false;
-      submitBtn.style.background = "var(--neem)";
-  }
+        if (data.success) {
+            document.getElementById('regForm').style.display = 'none';
+            document.getElementById('otpSection').style.display = 'block';
+        } else {
+            alert("❌ " + (data.error || "OTP भेजने में समस्या आई"));
+        }
+    } catch (err) {
+        alert("❌ सर्वर से कनेक्ट नहीं हो पा रहा है।");
+    } finally {
+        btn.innerText = "OTP भेजें";
+        btn.disabled = false;
+    }
 }
 
   function cancelOTP() {
@@ -1117,43 +1106,43 @@ function renderComplaints(complaints) {
 
   async function verifyOTP() {
     const otp = document.getElementById('otpInput').value;
+    if (!otp || otp.length !== 4) {
+      alert("⚠️ कृपया 4 अंकों का OTP डालें।");
+      return;
+    }
 
     const submitBtn = document.querySelector('#otpSection .submit-btn');
     submitBtn.innerText = "⏳ अकाउंट बन रहा है...";
     submitBtn.disabled = true;
 
-    // डेटाबेस में भेजने के लिए फॉर्म तैयार करना
     const formData = new FormData();
     formData.append('name', document.getElementById('regName').value);
     formData.append('phone', document.getElementById('regPhone').value);
-    formData.append('otp', otp);
     formData.append('password', document.getElementById('regPwd').value);
     formData.append('district', document.getElementById('regDistrict').value);
     formData.append('block', document.getElementById('regBlock').value);
     formData.append('village', document.getElementById('regVillage').value);
-    formData.append('role', loggedInUserRole); // अधिकारी या नागरिक
+    formData.append('role', loggedInUserRole);
+    formData.append('otp', otp);   // 👈 यह नई लाइन — OTP भी सर्वर को भेजो
 
     const idProof = document.getElementById('regIdProof').files[0];
     if(idProof) formData.append('idProof', idProof);
 
     try {
-      const response = await fetch('https://mera-gaon-app.onrender.com/api/auth/register', {
+      const response = await fetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
         body: formData
       });
       const result = await response.json();
 
       if(result.success) {
-        // अधिकारी के लिए पेंडिंग स्क्रीन
         if(loggedInUserRole !== "") {
            alert("⏳ आपके दस्तावेज़ प्राप्त हो गए हैं।\n\nसुरक्षा के लिए, आपकी जानकारी और इलेक्शन सर्टिफिकेट हमारी एडमिन टीम के पास वेरिफिकेशन के लिए भेज दिया गया है।\nवेरीफाई होने के बाद ही आपको डैशबोर्ड का एक्सेस मिलेगा।");
            window.location.reload();
            return;
         }
-
-        // आम नागरिक के लिए सीधा लॉगिन
         loggedInUserName = result.user.name;
-        loggedInVillage = result.user.village;      
+        loggedInVillage = result.user.village;
         loggedInDistrict = result.user.district;
         loggedInUserId = result.user._id;
         loggedInBlock = result.user.block;
@@ -1161,8 +1150,9 @@ function renderComplaints(complaints) {
         document.getElementById('mainApp').style.display = 'block';
         document.getElementById('headerVillageName').innerText = result.user.village + ", " + result.user.district;
         checkVillageAdminPrompt();
+        loadComplaintsFromDB();
       } else {
-        alert("❌ " + result.error); // अगर नंबर पहले से रजिस्टर है तो एरर देगा
+        alert("❌ " + result.error);
       }
     } catch(err) {
       alert("❌ सर्वर एरर: बैकएंड से कनेक्ट नहीं हो पा रहा है।");
@@ -1170,7 +1160,7 @@ function renderComplaints(complaints) {
       submitBtn.innerText = "सत्यापित करें";
       submitBtn.disabled = false;
     }
-  }
+}
 
   // --- Modal Logic ---
   function openModal(){ document.getElementById('modalBg').classList.add('open'); }
