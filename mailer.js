@@ -49,4 +49,25 @@ ${mediaLinks || 'कोई फोटो नहीं'}
     }
 }
 
-module.exports = { sendComplaintEmail };
+async function sendAdminVerificationEmail(user, approveUrl, rejectUrl) {
+    const mailOptions = {
+        from: `"मेरा गाँव" <${process.env.GMAIL_USER}>`,
+        to: process.env.ADMIN_EMAIL,
+        subject: `🆕 नया ${user.role} अकाउंट वेरिफिकेशन — ${user.village || user.district}`,
+        html: `
+          <p><b>नाम:</b> ${user.name}</p>
+          <p><b>पद:</b> ${user.role}</p>
+          <p><b>फ़ोन:</b> ${user.phone}</p>
+          <p><b>जगह:</b> ${user.district}, ${user.block}, ${user.village}</p>
+          <p><b>ID/इलेक्शन सर्टिफिकेट:</b> <a href="${user.idProofUrl}">यहां देखें</a></p>
+          <p>
+            <a href="${approveUrl}" style="padding:10px 16px;background:#4C6444;color:white;text-decoration:none;border-radius:6px;">✅ अप्रूव करें</a>
+            &nbsp;
+            <a href="${rejectUrl}" style="padding:10px 16px;background:#A8402E;color:white;text-decoration:none;border-radius:6px;">❌ रिजेक्ट करें</a>
+          </p>`
+    };
+    try { await transporter.sendMail(mailOptions); console.log('✅ एडमिन वेरिफिकेशन मेल भेजी गई'); }
+    catch(err){ console.log('❌ एडमिन मेल एरर:', err.message); }
+}
+
+module.exports = { sendComplaintEmail, sendAdminVerificationEmail };

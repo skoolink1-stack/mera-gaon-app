@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="hi">
 <head>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MERA GAON</title>
@@ -789,6 +790,35 @@
   let loggedInUserId = "";
   let loggedInBlock = "";
   let currentActiveCard = null;
+
+  async function startPayment() {
+      const res = await fetch(`${API_BASE}/api/payment/create-order`, { method: 'POST' });
+      const data = await res.json();
+
+      if (!data.success) return alert("पेमेंट सिस्टम में दिक्कत है!");
+
+      const options = {
+          "key": "rzp_test_Thn7E9MjsZduln", 
+          "amount": data.order.amount,
+          "currency": "INR",
+          "name": "मेरा गाँव",
+          "description": "मासिक सब्सक्रिप्शन",
+          "order_id": data.order.id,
+          "handler": async function (response) {
+              const verifyRes = await fetch(`${API_BASE}/api/payment/verify`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(response)
+              });
+              const verifyData = await verifyRes.json();
+              if (verifyData.success) {
+                  alert("✅ पेमेंट सफल! आपका 'मेरा गाँव' ऐप एक्टिवेट हो गया है।");
+              }
+          },
+          "theme": { "color": "#4C6444" }
+      };
+      new Razorpay(options).open();
+    }
   
   // 1. हर पोस्ट का अलग-अलग डेटाबेस (Frontend Demo)
   const postCommentsData = {
@@ -1012,6 +1042,8 @@ function renderComplaints(complaints) {
     }
   }
 
+  async function sendOTP() {
+    const phone = document.getElementById('regPhone').value;
   // ✅ FIX #1: ID Proof, District, Block Validation Added
   function sendOTP() {
     const name = document.getElementById('regName').value;
@@ -1049,6 +1081,30 @@ function renderComplaints(complaints) {
     document.getElementById('regForm').style.display = 'none';
     document.getElementById('otpSection').style.display = 'block';
   }
+  const submitBtn = document.querySelector('.submit-btn');
+    submitBtn.innerText = "⏳ OTP भेज रहे हैं...";
+    
+    try {
+        const res = await fetch(`${API_BASE}/api/auth/send-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: phone })
+        });
+        const data = await res.json();
+        
+        if(data.success) {
+            document.getElementById('regForm').style.display = 'none';
+            document.getElementById('otpSection').style.display = 'block';
+            document.getElementById('otpInput').value = ''; // पुराना 1234 हटा दें
+        } else {
+            alert("❌ " + data.error);
+        }
+    } catch (err) {
+        alert("सर्वर से कनेक्ट नहीं हो पा रहा है।");
+    } finally {
+        submitBtn.innerText = "OTP भेजें";
+    }
+}
 
   function cancelOTP() {
     document.getElementById('otpSection').style.display = 'none';
@@ -1057,10 +1113,6 @@ function renderComplaints(complaints) {
 
   async function verifyOTP() {
     const otp = document.getElementById('otpInput').value;
-    if(otp !== "1234") {
-      alert("❌ गलत OTP! कृपया 1234 डालें।");
-      return;
-    }
 
     const submitBtn = document.querySelector('#otpSection .submit-btn');
     submitBtn.innerText = "⏳ अकाउंट बन रहा है...";
@@ -1070,6 +1122,7 @@ function renderComplaints(complaints) {
     const formData = new FormData();
     formData.append('name', document.getElementById('regName').value);
     formData.append('phone', document.getElementById('regPhone').value);
+    formData.append('otp', otp);
     formData.append('password', document.getElementById('regPwd').value);
     formData.append('district', document.getElementById('regDistrict').value);
     formData.append('block', document.getElementById('regBlock').value);

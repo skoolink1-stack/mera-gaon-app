@@ -3,12 +3,18 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
+const axios = require('axios');
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
+
+// OTP को थोड़ी देर याद रखने के लिए (Temporary Store)
+const otpStore = {};
 const cron = require('node-cron');
 const Complaint = require('./models/Complaint');
 const Official = require('./models/Official');
 const VillageInfo = require('./models/VillageInfo');
 const bcrypt = require('bcrypt');
-const { sendComplaintEmail } = require('./mailer');
+const { sendComplaintEmail, sendAdminVerificationEmail } = require('./mailer');
 const User = require('./models/User');
 
 const app = express();
@@ -55,11 +61,43 @@ const mongoURI = process.env.MONGO_URI;
 mongoose.connect(mongoURI)
     .then(() => console.log('✅ MongoDB से कनेक्शन सफल!'))
     .catch(err => console.log('❌ MongoDB कनेक्शन एरर:', err));
+
+    // --- असली OTP भेजने की API (Fast2SMS) ---
+app.post('/api/auth/send-otp', async (req, res) => {
+    const { phone } = req.body;
+    if (!phone || phone.length !== 10) return res.status(400).json({ error: "सही नंबर डालें" });
+
+    // 4 अंकों का असली OTP बनाना
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    otpStore[phone] = otp; // OTP को मेमोरी में सेव कर लिया
+
+    try {
+        await axios.get('https://www.fast2sms.com/dev/bulkV2', {
+            params: {
+                authorization: process.env.FAST2SMS_API_KEY,
+                variables_values: otp,
+                route: 'otp',
+                numbers: phone
+            }
+        });
+        console.log(`${phone} पर OTP भेज दिया गया है।`);
+        res.json({ success: true, message: "OTP भेज दिया गया है" });
+    } catch (error) {
+        console.error("Fast2SMS Error:", error.message);
+        res.status(500).json({ success: false, error: "OTP भेजने में समस्या आई" });
+    }
+});
     
     // --- 1. नया यूज़र रजिस्टर करने की API ---
 app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
     try {
-        const { name, phone, password, role, district, block, village } = req.body;
+        const { name, phone, password, role, district, block, village, otp } = req.body; // otp जोड़ा
+
+        // OTP चेक करने का असली लॉजिक
+        if (otpStore[phone] !== otp) {
+            return res.status(400).json({ success: false, error: '❌ गलत OTP! कृपया सही OTP डालें।' });
+        }
+        delete otpStore[phone];
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // चेक करें कि फोन नंबर पहले से रजिस्टर तो नहीं है
@@ -77,6 +115,12 @@ app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
         });
 
         await newUser.save();
+        if (!isVerified) {
+            const approveUrl = `${process.env.BACKEND_URL}/api/admin/verify-official/${newUser._id}?action=approve&secret=${process.env.ADMIN_SECRET}`;
+            const rejectUrl = `${process.env.BACKEND_URL}/api/admin/verify-official/${newUser._id}?action=reject&secret=${process.env.ADMIN_SECRET}`;
+            sendAdminVerificationEmail(newUser, approveUrl, rejectUrl);
+        }
+
         res.json({ success: true, message: 'अकाउंट बन गया!', user: newUser });
     } catch (error) {
         console.error("रजिस्ट्रेशन में एरर आया:", error);
@@ -575,6 +619,55 @@ app.post('/api/complaints/:id/support', async (req, res) => {
     console.error("Support error:", error);
     res.status(500).json({ error: "समर्थन अपडेट नहीं हो पाया" });
   }
+});
+app.get('/api/admin/verify-official/:id', async (req, res) => {
+    try {
+        const { action, secret } = req.query;
+        if (secret !== process.env.ADMIN_SECRET) return res.status(403).send('गलत लिंक');
+        const user = await User.findById(req.params.id);
+        if (!user) return res.send('यूज़र नहीं मिला');
+        if (action === 'approve') {
+            user.isVerified = true;
+            await user.save();
+            return res.send(`<h2>✅ ${user.name} को ${user.role} के तौर पर अप्रूव कर दिया गया।</h2>`);
+        } else {
+            await User.findByIdAndDelete(req.params.id);
+            return res.send(`<h2>❌ ${user.name} का अकाउंट रिजेक्ट कर दिया गया।</h2>`);
+        }
+    } catch (error) { res.status(500).send('एरर: ' + error.message); }
+});
+
+// --- Razorpay Payment APIs ---
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET
+});
+
+app.post('/api/payment/create-order', async (req, res) => {
+    try {
+        const options = {
+            amount: 10 * 100, // ₹10 (पैसे में)
+            currency: "INR",
+            receipt: "receipt_" + Math.random().toString(36).substring(7)
+        };
+        const order = await razorpay.orders.create(options);
+        res.json({ success: true, order });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/payment/verify', (req, res) => {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const sign = razorpay_order_id + "|" + razorpay_payment_id;
+    const expectedSign = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET).update(sign.toString()).digest("hex");
+
+    if (razorpay_signature === expectedSign) {
+        // पेमेंट सक्सेस हो गई! (यहाँ आप यूजर के डेटाबेस में isPaid = true कर सकते हैं)
+        res.json({ success: true, message: "Payment Successful" });
+    } else {
+        res.status(400).json({ success: false, error: "Payment Failed / Fake" });
+    }
 });
 
 app.listen(PORT, () => {
