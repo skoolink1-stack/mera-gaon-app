@@ -1043,26 +1043,28 @@ function renderComplaints(complaints) {
   }
 
   async function sendOTP() {
-  // 1. फॉर्म का सारा डेटा उठाना
-  const name = document.getElementById('regName').value;
-  const phone = document.getElementById('regPhone').value;
-  const village = document.getElementById('regVillage').value;
-  const pwd = document.getElementById('regPwd').value;
-  const pwdC = document.getElementById('regPwdConfirm').value;
-  const idProof = document.getElementById('regIdProof').value; 
-  const dist = document.getElementById('regDistrict').value;   
-  const block = document.getElementById('regBlock').value;     
+  // 1. सुरक्षित तरीके से फॉर्म का डेटा उठाना (अगर कोई ID गायब होगी तो क्रैश नहीं होगा)
+  const name = document.getElementById('regName')?.value || '';
+  const phone = document.getElementById('regPhone')?.value || '';
+  const village = document.getElementById('regVillage')?.value || '';
+  const pwd = document.getElementById('regPwd')?.value || '';
+  const pwdC = document.getElementById('regPwdConfirm')?.value || '';
+  const idProof = document.getElementById('regIdProof')?.value || ''; 
+  const dist = document.getElementById('regDistrict')?.value || '';   
+  const block = document.getElementById('regBlock')?.value || '';     
   
   const roleDropdown = document.getElementById('regRole');
-  if(document.getElementById('officialFields').style.display === 'block') {
-      loggedInUserRole = roleDropdown.options[roleDropdown.selectedIndex].value;
+  const officialFields = document.getElementById('officialFields');
+  
+  if(officialFields && officialFields.style.display === 'block') {
+      loggedInUserRole = roleDropdown ? roleDropdown.options[roleDropdown.selectedIndex].value : "";
   } else {
       loggedInUserRole = ""; 
   }
 
   // 2. चेकिंग (Validation)
-  if(!name || phone.length < 10 || !village || !pwd || !idProof || !dist || !block) {
-    alert("⚠️ कृपया सभी ज़रूरी जानकारी (*) भरें और आईडी अपलोड करें।");
+  if(!name || phone.length < 10 || !village || !pwd || !dist || !block) {
+    alert("⚠️ कृपया सभी ज़रूरी जानकारी (*) भरें।");
     return;
   }
 
@@ -1080,6 +1082,10 @@ function renderComplaints(complaints) {
 
   // 3. असली OTP भेजना (Fast2SMS API)
   const submitBtn = document.querySelector('#regForm .submit-btn');
+  if(!submitBtn) {
+      alert("सबमिट बटन नहीं मिला!");
+      return;
+  }
   const originalText = submitBtn.innerText;
   
   submitBtn.innerText = "⏳ OTP भेज रहे हैं...";
@@ -1097,7 +1103,9 @@ function renderComplaints(complaints) {
       if(data.success) {
           document.getElementById('regForm').style.display = 'none';
           document.getElementById('otpSection').style.display = 'block';
-          document.getElementById('otpInput').value = ''; // बॉक्स खाली करें
+          
+          const otpInput = document.getElementById('otpInput');
+          if(otpInput) otpInput.value = ''; // बॉक्स खाली करें
       } else {
           alert("❌ " + data.error);
       }
