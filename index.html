@@ -406,7 +406,7 @@
       </div>
 
       <div class="field"><label>पूरा नाम *</label><input type="text" id="regName" placeholder="अपना नाम लिखें"></div>
-      <div class="field"><label>फ़ोन नंबर *</label><input type="tel" id="regPhone" placeholder="10 अंकों का मोबाइल नंबर" maxlength="10"></div>
+      <div class="field"><label>फ़ोन नंबर *</label><input type="tel" id="spPhone" placeholder="10 अंकों का मोबाइल नंबर" maxlength="10"></div>
       
       <!-- अधिकारी फील्ड्स -->
       <div id="officialFields" style="display:none; background:#F2EAD3; padding:10px; border-radius:6px; border:1px dashed var(--haldi); margin-bottom:13px;">
@@ -1493,7 +1493,7 @@ async function submitSarpanchInfo() {
   const email = document.getElementById('spEmail').value.trim();
 
   if (!name) { alert('⚠️ सरपंच का नाम लिखना ज़रूरी है।'); return; }
-  if (phone && !/^\d{10}$/.test(phone)) { alert('⚠️ मोबाइल नंबर 10 अंकों का होना चाहिए।'); return; }
+  if (!phone || !/^\d{10}$/.test(phone)) { alert('⚠️ सरपंच का 10 अंकों का मोबाइल नंबर डालना ज़रूरी है।'); return; }
   if (email && !/^\S+@\S+\.\S+$/.test(email)) { alert('⚠️ ईमेल सही फॉर्मेट में लिखें।'); return; }
 
   try {

@@ -481,6 +481,9 @@ app.post('/api/village/sarpanch', async (req, res) => {
         if (!name || !name.trim()) {
             return res.status(400).json({ success: false, error: 'सरपंच का नाम ज़रूरी है' });
         }
+        if (!phone || !/^\d{10}$/.test(phone.trim())) {
+            return res.status(400).json({ success: false, error: '10 अंकों का सरपंच का फ़ोन नंबर ज़रूरी है' });
+        }
 
         const filter = { level: 1, department: 'पंचायत', district, block, village };
 
@@ -491,7 +494,7 @@ app.post('/api/village/sarpanch', async (req, res) => {
         }
 
         const official = await Official.create({
-            ...filter, name: name.trim(), phone: phone || '', email: email || ''
+            ...filter, name: name.trim(), phone: phone.trim(), email: email || ''
         });
         res.json({ success: true, message: 'सरपंच की जानकारी सेव हो गई!', official });
     } catch (error) {
