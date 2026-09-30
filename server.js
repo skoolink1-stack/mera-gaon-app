@@ -14,7 +14,7 @@ const Complaint = require('./models/Complaint');
 const Official = require('./models/Official');
 const VillageInfo = require('./models/VillageInfo');
 const bcrypt = require('bcrypt');
-const { sendComplaintEmail, sendAdminVerificationEmail } = require('./mailer');
+const { sendComplaintEmail, sendAdminVerificationEmail, sendOtpEmail } = require('./mailer');
 const User = require('./models/User');
 
 const app = express();
@@ -63,61 +63,37 @@ mongoose.connect(mongoURI)
     .catch(err => console.log('❌ MongoDB कनेक्शन एरर:', err));
 
     
-// --- असली OTP भेजने की API (Fast2SMS) ---
 app.post('/api/auth/send-otp', async (req, res) => {
     try {
-        // 1. अगर ऊपर axios छूट गया होगा, तो यह यहीं से ले लेगा
-        const axios = require('axios'); 
-        
-        const { phone } = req.body;
-        if (!phone || phone.length !== 10) return res.status(400).json({ error: "सही नंबर डालें" });
-
-        // 2. otpStore क्रैश से बचने के लिए इसे ग्लोबल बना दिया
-        if (typeof global.otpStore === 'undefined') {
-            global.otpStore = {};
-        }
-        
-        const otp = Math.floor(1000 + Math.random() * 9000).toString(); 
-        global.otpStore[phone] = otp; 
-
-        // 3. चेक करना कि Render में API Key डली है या नहीं
-        if (!process.env.FAST2SMS_API_KEY) {
-            return res.status(500).json({ error: "Render डैशबोर्ड पर FAST2SMS_API_KEY नहीं मिली!" });
+        const { email } = req.body;
+        if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+            return res.status(400).json({ error: "सही ईमेल डालें" });
         }
 
-        // 4. Fast2SMS को रिक्वेस्ट भेजना
-        const response = await axios.get('https://www.fast2sms.com/dev/bulkV2', {
-            params: {
-                authorization: process.env.FAST2SMS_API_KEY,
-                variables_values: otp,
-                route: 'otp',
-                numbers: phone
-            }
-        });
-        
+        if (typeof global.otpStore === 'undefined') global.otpStore = {};
+
+        const otp = Math.floor(1000 + Math.random() * 9000).toString();
+        global.otpStore[email] = otp;
+
+        const sent = await sendOtpEmail(email, otp);
+        if (!sent) return res.status(500).json({ success: false, error: "OTP मेल नहीं भेजी जा सकी" });
+
         res.json({ success: true, message: "OTP भेज दिया गया है" });
-
     } catch (error) {
-        // 5. जो भी असली एरर होगा, वह सीधा आपके अलर्ट बॉक्स में आ जाएगा!
-        let errorMsg = error.message;
-        if (error.response && error.response.data) {
-            errorMsg = JSON.stringify(error.response.data);
-        }
-        console.error("Error Details:", errorMsg);
-        res.status(500).json({ success: false, error: "असली एरर: " + errorMsg });
+        console.error("OTP एरर:", error.message);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
     
     // --- 1. नया यूज़र रजिस्टर करने की API ---
 app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
     try {
-        const { name, phone, password, role, district, block, village, otp } = req.body; // otp जोड़ा
+        const { name, phone, password, role, district, block, village, email, otp } = req.body;
 
-        // OTP चेक करने का असली लॉजिक
-        if (otpStore[phone] !== otp) {
+        if (global.otpStore[email] !== otp) {
             return res.status(400).json({ success: false, error: '❌ गलत OTP! कृपया सही OTP डालें।' });
         }
-        delete otpStore[phone];
+        delete global.otpStore[email];
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // चेक करें कि फोन नंबर पहले से रजिस्टर तो नहीं है

@@ -423,18 +423,35 @@
         <p style="font-size:11px; color:var(--ink-soft); margin:0;">⚠️ अकाउंट टीम द्वारा वेरीफाई होने के बाद चालू होगा।</p>
       </div>
 
-      <div class="field"><label id="proofLabel">सरकारी आईडी प्रूफ (आधार/वोटर कार्ड) *</label>
-        <div class="upload-box" id="idUploadUI" onclick="document.getElementById('regIdProof').click()" style="padding:10px;">📎 आईडी अपलोड करें</div>
-        <input type="file" id="regIdProof" style="display:none;" onchange="showIdName(this)">
+      <div class="field"><label>ईमेल *</label><input type="email" id="regEmail" placeholder="अपनी ईमेल डालें"></div>
+
+      <!-- अधिकारी के लिए 2 अतिरिक्त फील्ड -->
+      <div id="officialExtraFields" style="display:none;">
+        <div class="field"><label id="proofLabel">सरकारी आईडी प्रूफ / इलेक्शन सर्टिफिकेट *</label>
+          <div class="upload-box" id="idUploadUI" onclick="document.getElementById('regIdProof').click()" style="padding:10px;">📎 दस्तावेज़ अपलोड करें</div>
+          <input type="file" id="regIdProof" style="display:none;" onchange="showIdName(this)">
+        </div>
       </div>
 
       <div class="field"><label>ज़िला *</label><select id="regDistrict" onchange="populateBlocks()"><option value="">ज़िला चुनें...</option></select></div>
       <div class="field"><label>ब्लॉक (खंड) *</label><select id="regBlock" onchange="populateVillages()"><option value="">पहले ज़िला चुनें...</option></select></div>
       <div class="field"><label>गाँव का नाम *</label><select id="regVillage"><option value="">पहले ब्लॉक चुनें...</option></select></div>
 
-      <!-- नया पासवर्ड सिस्टम -->
-      <div class="field"><label>नया पासवर्ड बनाएँ *</label><input type="password" id="regPwd" placeholder="कम से कम 6 अक्षर"></div>
-      <div class="field"><label>पासवर्ड कन्फर्म करें *</label><input type="password" id="regPwdConfirm" placeholder="पासवर्ड दोबारा लिखें"></div>
+      <div class="field">
+        <label>नया पासवर्ड बनाएँ *</label>
+        <div style="position:relative;">
+          <input type="password" id="regPwd" placeholder="कम से कम 6 अक्षर" oninput="checkPwdMatch()" style="padding-right:40px;">
+          <span onclick="togglePwdVisibility('regPwd', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer;">👁️</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>पासवर्ड कन्फर्म करें *</label>
+        <div style="position:relative;">
+          <input type="password" id="regPwdConfirm" placeholder="पासवर्ड दोबारा लिखें" oninput="checkPwdMatch()" style="padding-right:40px;">
+          <span onclick="togglePwdVisibility('regPwdConfirm', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer;">👁️</span>
+        </div>
+        <p id="pwdMatchMsg" style="font-size:12px; margin:4px 0 0; display:none;"></p>
+      </div>
 
       <button class="submit-btn" style="margin-top:10px;" onclick="sendOTP()">OTP भेजें</button>
     </div>
@@ -984,6 +1001,7 @@ function renderComplaints(complaints) {
       tabCitizen.style.color = "var(--ink-soft)";
       
       officialFields.style.display = "block";
+      document.getElementById('officialExtraFields').style.display = "block";
       proofLabel.innerText = "पद का प्रमाण (ID कार्ड / इलेक्शन सर्टिफिकेट) *";
     } else {
       tabCitizen.style.background = "var(--neem)";
@@ -992,6 +1010,7 @@ function renderComplaints(complaints) {
       tabOfficial.style.color = "var(--ink-soft)";
       
       officialFields.style.display = "none";
+      document.getElementById('officialExtraFields').style.display = "none";
       proofLabel.innerText = "सरकारी आईडी प्रूफ (आधार/वोटर कार्ड) *";
     }
   }
@@ -1044,22 +1063,27 @@ function renderComplaints(complaints) {
   async function sendOTP() {
     const name = document.getElementById('regName').value;
     const phone = document.getElementById('regPhone').value;
+    const email = document.getElementById('regEmail').value;
     const village = document.getElementById('regVillage').value;
     const pwd = document.getElementById('regPwd').value;
     const pwdC = document.getElementById('regPwdConfirm').value;
-    const idProof = document.getElementById('regIdProof').value;
     const dist = document.getElementById('regDistrict').value;
     const block = document.getElementById('regBlock').value;
 
     const roleDropdown = document.getElementById('regRole');
-    if(document.getElementById('officialFields').style.display === 'block') {
+    const isOfficial = document.getElementById('officialFields').style.display === 'block';
+    if (isOfficial) {
         loggedInUserRole = roleDropdown.options[roleDropdown.selectedIndex].value;
     } else {
         loggedInUserRole = "";
     }
 
-    if(!name || phone.length < 10 || !village || !pwd || !idProof || !dist || !block) {
-      alert("⚠️ कृपया सभी ज़रूरी जानकारी (*) भरें और आईडी अपलोड करें।");
+    if(!name || phone.length < 10 || !email || !village || !pwd || !dist || !block) {
+      alert("⚠️ कृपया सभी ज़रूरी जानकारी (*) भरें।");
+      return;
+    }
+    if (isOfficial && !document.getElementById('regIdProof').value) {
+      alert("⚠️ कृपया आईडी प्रूफ/इलेक्शन सर्टिफिकेट अपलोड करें।");
       return;
     }
     if(pwd.length < 6) {
@@ -1067,7 +1091,7 @@ function renderComplaints(complaints) {
       return;
     }
     if(pwd !== pwdC) {
-      alert("❌ आपके दोनों पासवर्ड आपस में मेल नहीं खा रहे हैं! कृपया दोबारा चेक करें।");
+      alert("❌ आपके दोनों पासवर्ड आपस में मेल नहीं खा रहे हैं!");
       return;
     }
 
@@ -1081,10 +1105,9 @@ function renderComplaints(complaints) {
         const res = await fetch(`${API_BASE}/api/auth/send-otp`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone })
+            body: JSON.stringify({ email })
         });
         const data = await res.json();
-
         if (data.success) {
             document.getElementById('regForm').style.display = 'none';
             document.getElementById('otpSection').style.display = 'block';
@@ -1118,6 +1141,7 @@ function renderComplaints(complaints) {
     const formData = new FormData();
     formData.append('name', document.getElementById('regName').value);
     formData.append('phone', document.getElementById('regPhone').value);
+    formData.append('email', document.getElementById('regEmail').value);
     formData.append('password', document.getElementById('regPwd').value);
     formData.append('district', document.getElementById('regDistrict').value);
     formData.append('block', document.getElementById('regBlock').value);
@@ -1904,13 +1928,33 @@ function populateVillages() {
   }
 }
 
-  function showIdName(input) {
-    if(input.files && input.files[0]) {
-      const ui = document.getElementById('idUploadUI');
-      ui.innerText = "✅ " + input.files[0].name;
-      ui.style.color = "var(--neem)"; ui.style.fontWeight = "bold";
-    }
+  function togglePwdVisibility(id, iconEl) {
+  const input = document.getElementById(id);
+  if (input.type === 'password') {
+    input.type = 'text';
+    iconEl.innerText = '🙈';
+  } else {
+    input.type = 'password';
+    iconEl.innerText = '👁️';
   }
+}
+
+function checkPwdMatch() {
+  const pwd = document.getElementById('regPwd').value;
+  const pwdC = document.getElementById('regPwdConfirm').value;
+  const msg = document.getElementById('pwdMatchMsg');
+
+  if (!pwdC) { msg.style.display = 'none'; return; }
+
+  msg.style.display = 'block';
+  if (pwd === pwdC) {
+    msg.style.color = 'var(--neem)';
+    msg.innerText = '✅ पासवर्ड मेल खाते हैं';
+  } else {
+    msg.style.color = 'var(--red-flag)';
+    msg.innerText = '❌ पासवर्ड मेल नहीं खा रहे';
+  }
+}
 
   // --- Sidebar & Profile Logic ---
   function toggleMenu() {

@@ -70,4 +70,21 @@ async function sendAdminVerificationEmail(user, approveUrl, rejectUrl) {
     catch(err){ console.log('❌ एडमिन मेल एरर:', err.message); }
 }
 
-module.exports = { sendComplaintEmail, sendAdminVerificationEmail };
+async function sendOtpEmail(toEmail, otp) {
+    const mailOptions = {
+        from: `"मेरा गाँव" <${process.env.GMAIL_USER}>`,
+        to: toEmail,
+        subject: `आपका OTP: ${otp}`,
+        text: `आपका सत्यापन कोड है: ${otp}\n\nयह किसी के साथ साझा न करें।\n\n— मेरा गाँव ऐप`
+    };
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log(`✅ OTP मेल भेजी गई: ${toEmail}`);
+        return true;
+    } catch (err) {
+        console.log(`❌ OTP मेल एरर (${toEmail}):`, err.message);
+        return false;
+    }
+}
+
+module.exports = { sendComplaintEmail, sendAdminVerificationEmail, sendOtpEmail };
