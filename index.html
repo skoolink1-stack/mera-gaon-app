@@ -1198,6 +1198,15 @@ function renderComplaints(complaints) {
       ui.style.fontWeight = "bold";
     }
   }
+    function showIdName(input) {
+    if (input.files && input.files[0]) {
+      const ui = document.getElementById('idUploadUI');
+      ui.innerText = "✅ " + input.files[0].name;
+      ui.style.borderColor = "var(--neem)";
+      ui.style.color = "var(--neem)";
+      ui.style.fontWeight = "bold";
+    }
+  }
 
   // --- असली समर्थन (Support Logic) ---
 async function toggleSupport(btn, complaintId) {
