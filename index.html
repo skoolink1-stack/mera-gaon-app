@@ -884,7 +884,7 @@ async function confirmWithdraw(id) {
       closeDetail();
       
       // शिकायतों की लिस्ट दोबारा लोड करें
-      if (typeof loadComplaints === 'function') loadComplaints();
+      loadComplaintsFromDB();
     } else {
       alert(data.error || 'समस्या आई है, कृपया पुनः प्रयास करें।');
     }
@@ -1107,7 +1107,7 @@ function renderComplaints(complaints) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (data.success) {
             document.getElementById('regForm').style.display = 'none';
             document.getElementById('otpSection').style.display = 'block';
@@ -1636,7 +1636,7 @@ async function submitWithdrawal(id) {
       const mainApp = document.getElementById('mainApp');
       if (mainApp) mainApp.style.display = 'block';
 
-      if (typeof loadComplaints === 'function') loadComplaints();
+      loadComplaintsFromDB();
     } else {
       alert(data.error || 'समस्या आई है, कृपया पुनः प्रयास करें।');
     }
@@ -1806,6 +1806,7 @@ async function addComment() {
     formData.append('category', category);
     formData.append('desc', desc);
     formData.append('isAnonymous', isAnonymous);
+    formData.append('userId', loggedInUserId);
     formData.append('citizenName', loggedInUserName);
     formData.append('district', userDistrict);
     formData.append('block', loggedInBlock || document.getElementById('regBlock').value || '');
@@ -2163,7 +2164,7 @@ function logout() {
       }
       async function loadProfileComplaints() {
       try {
-        const res = await fetch('https://mera-gaon-app.onrender.com/api/my-complaints');
+        const res = await fetch(`${API_BASE}/api/my-complaints?userId=${encodeURIComponent(loggedInUserId)}`);
         const data = await res.json();
         const allComplaints = Array.isArray(data) ? data : [];
 
@@ -2328,7 +2329,7 @@ function logout() {
     <button onclick="closeSarpanchForm()" style="float:right; background:none; border:none; font-size:18px; cursor:pointer; color:var(--ink-soft);">✕</button>
     <h3 style="margin-top:0; font-family:'Noto Serif Devanagari',serif;">सरपंच का विवरण</h3>
     <div class="field"><label>सरपंच का नाम *</label><input type="text" id="spName" placeholder="पूरा नाम लिखें"></div>
-    <div class="field"><label>फ़ोन नंबर (वैकल्पिक)</label><input type="tel" id="regPhone" placeholder="10 अंकों का मोबाइल नंबर" maxlength="10"></div>
+    <div class="field"><label>फ़ोन नंबर *</label><input type="tel" id="spPhone" placeholder="10 अंकों का मोबाइल नंबर" maxlength="10"></div>
     <div class="field"><label>ईमेल (वैकल्पिक)</label><input type="email" id="spEmail" placeholder="abc@gmail.com"></div>
     <button class="submit-btn" style="margin-top:10px;" onclick="submitSarpanchInfo()">सुरक्षित करें</button>
   </div>

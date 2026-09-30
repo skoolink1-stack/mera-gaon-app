@@ -7,8 +7,7 @@ const axios = require('axios');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 
-// OTP को थोड़ी देर याद रखने के लिए (Temporary Store)
-const otpStore = {};
+
 const cron = require('node-cron');
 const Complaint = require('./models/Complaint');
 const Official = require('./models/Official');
@@ -21,7 +20,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-app.use(cors({ origin: 'https://mera-gaon-app.vercel.app' }));
+app.use(cors({ origin: ['https://mera-gaon-app.vercel.app', 'http://localhost:5500', 'http://127.0.0.1:5500'] }));
 const path = require('path'); 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -63,25 +62,33 @@ mongoose.connect(mongoURI)
     .catch(err => console.log('❌ MongoDB कनेक्शन एरर:', err));
 
     
+global.otpStore = global.otpStore || {};
+
 app.post('/api/auth/send-otp', async (req, res) => {
     try {
         const { email } = req.body;
         if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
-            return res.status(400).json({ error: "सही ईमेल डालें" });
+            return res.status(400).json({ success: false, error: "सही ईमेल डालें" });
         }
 
-        if (typeof global.otpStore === 'undefined') global.otpStore = {};
+        const existing = global.otpStore[email];
+        if (existing && Date.now() - existing.sentAt < 60 * 1000) {
+            return res.status(429).json({ success: false, error: "कृपया 1 मिनट बाद दोबारा कोशिश करें" });
+        }
 
         const otp = Math.floor(1000 + Math.random() * 9000).toString();
-        global.otpStore[email] = otp;
+        global.otpStore[email] = { otp, sentAt: Date.now(), expiresAt: Date.now() + 10 * 60 * 1000 };
 
         const sent = await sendOtpEmail(email, otp);
-        if (!sent) return res.status(500).json({ success: false, error: "OTP मेल नहीं भेजी जा सकी" });
+        if (!sent) {
+            delete global.otpStore[email];
+            return res.status(502).json({ success: false, error: "OTP मेल नहीं भेजी जा सकी, कुछ देर बाद कोशिश करें" });
+        }
 
         res.json({ success: true, message: "OTP भेज दिया गया है" });
     } catch (error) {
         console.error("OTP एरर:", error.message);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ success: false, error: "सर्वर एरर" });
     }
 });
     
@@ -90,8 +97,9 @@ app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
     try {
         const { name, phone, password, role, district, block, village, email, otp } = req.body;
 
-        if (global.otpStore[email] !== otp) {
-            return res.status(400).json({ success: false, error: '❌ गलत OTP! कृपया सही OTP डालें।' });
+        const record = global.otpStore && global.otpStore[email];
+        if (!record || record.otp !== otp || Date.now() > record.expiresAt) {
+            return res.status(400).json({ success: false, error: '❌ गलत या expire OTP! दोबारा OTP भेजें।' });
         }
         delete global.otpStore[email];
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -103,8 +111,8 @@ app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
         // अधिकारी है तो Verification पेंडिंग रहेगा (false)
         const isVerified = (role === 'citizen' || role === '') ? true : false;
 
-        const newUser = new User({
-            name, phone, password: hashedPassword, role: role || 'citizen',
+                const newUser = new User({
+            name, phone, email, password: hashedPassword, role: role || 'citizen',
             district, block, village,
             idProofUrl: req.file ? req.file.path : '',
             isVerified
@@ -117,7 +125,9 @@ app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
             sendAdminVerificationEmail(newUser, approveUrl, rejectUrl);
         }
 
-        res.json({ success: true, message: 'अकाउंट बन गया!', user: newUser });
+        const safeUser = newUser.toObject();
+        delete safeUser.password;
+        res.json({ success: true, message: 'अकाउंट बन गया!', user: safeUser });
     } catch (error) {
         console.error("रजिस्ट्रेशन में एरर आया:", error);
         res.status(500).json({ success: false, error: error.message });
@@ -136,7 +146,9 @@ app.post('/api/auth/login', async (req, res) => {
         
         if(!user.isVerified) return res.status(403).json({ success: false, error: 'आपका अधिकारी अकाउंट अभी पेंडिंग है। टीम इसे वेरीफाई कर रही है।' });
 
-        res.json({ success: true, message: 'लॉगिन सफल!', user });
+        const safeUser = user.toObject();
+        delete safeUser.password;
+        res.json({ success: true, message: 'लॉगिन सफल!', user: safeUser });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -182,7 +194,7 @@ async function findOfficialForComplaint(complaint) {
 
 app.post('/api/complaints/new', upload.array('images', 5), async (req, res) => {
     try {
-        const { category, desc, isAnonymous, citizenName, district, block, village } = req.body;
+        const { category, desc, isAnonymous, citizenName, district, block, village, userId } = req.body;
         const deadline = new Date();
         deadline.setDate(deadline.getDate() + 5);
 
@@ -194,6 +206,7 @@ app.post('/api/complaints/new', upload.array('images', 5), async (req, res) => {
             description: desc,
             mediaUrls: mediaUrls,
             citizenName: isAnonymous === 'true' ? '👤 पहचान गुप्त रखी गई' : citizenName,
+            userId: userId,
             location: { district, block, village },
             currentLevel: category === 'पंचायत' ? 2 : 1,   // 👈 यह लाइन जोड़ो
             escalationDeadline: deadline
@@ -402,7 +415,9 @@ app.post('/api/complaints/:id/withdraw', async (req, res) => {
 // प्रोफाइल के लिए सभी शिकायतें (Withdrawn सहित) लाने की API
 app.get('/api/my-complaints', async (req, res) => {
     try {
-        const complaints = await Complaint.find().sort({ createdAt: -1 });
+        const { userId } = req.query;
+        if (!userId) return res.status(400).json({ success: false, error: 'userId ज़रूरी है' });
+        const complaints = await Complaint.find({ userId }).sort({ createdAt: -1 });
         res.json(complaints);
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const userSchema = new mongoose.Schema({
     name: { type: String, required: true },
     phone: { type: String, required: true, unique: true }, // एक नंबर से एक ही अकाउंट
-    email: { type: String, required: true },
+    email: { type: String, default: '' },
     password: { type: String, required: true },
     role: { type: String, default: 'citizen' }, // नागरिक, सरपंच, BDO, DC/SDM
     district: String,

@@ -1,29 +1,53 @@
-const nodemailer = require('nodemailer');
+const axios = require('axios');
 
-const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true, 
-    auth: {
-        user: process.env.GMAIL_USER, 
-        pass: process.env.GMAIL_PASS  
-    },
-    // Ye network errors ko bypass karne mein madad karta hai
-    tls: {
-        rejectUnauthorized: false
+async function sendMail({ to, subject, text, html }) {
+    try {
+        const body = {
+            sender: { name: 'मेरा गाँव', email: process.env.MAIL_FROM },
+            to: [{ email: to }],
+            subject
+        };
+        if (html) body.htmlContent = html;
+        if (text) body.textContent = text;
+
+        await axios.post('https://api.brevo.com/v3/smtp/email', body, {
+            headers: {
+                'api-key': process.env.BREVO_API_KEY,
+                'Content-Type': 'application/json'
+            },
+            timeout: 15000
+        });
+        return true;
+    } catch (err) {
+        console.error('❌ मेल एरर:', err.response?.data || err.message);
+        return false;
     }
-});
+}
 
-// नई शिकायत की सूचना अधिकारी को भेजना
+// OTP मेल
+async function sendOtpEmail(toEmail, otp) {
+    return sendMail({
+        to: toEmail,
+        subject: 'मेरा गाँव - आपका OTP',
+        html: `
+          <div style="font-family:Arial,sans-serif;padding:20px;">
+            <h2>मेरा गाँव</h2>
+            <p>आपका OTP है:</p>
+            <h1 style="letter-spacing:8px;">${otp}</h1>
+            <p>यह 10 मिनट तक मान्य है। इसे किसी के साथ साझा न करें।</p>
+          </div>`
+    });
+}
+
+// नई शिकायत की सूचना अधिकारी को
 async function sendComplaintEmail(official, complaint) {
-    if (!official || !official.email) return;
+    if (!official || !official.email) return false;
 
     const mediaLinks = (complaint.mediaUrls || [])
-        .map(url => `https://mera-gaon-app.onrender.com${url}`)
+        .map(url => url.startsWith('http') ? url : `https://mera-gaon-app.onrender.com${url}`)
         .join('\n');
 
-    const mailOptions = {
-        from: `"मेरा गाँव" <${process.env.GMAIL_USER}>`,
+    const ok = await sendMail({
         to: official.email,
         subject: `🔔 नई शिकायत (${complaint.category}) — ${complaint.location.village || complaint.location.district}`,
         text: `
@@ -45,20 +69,16 @@ ${mediaLinks || 'कोई फोटो नहीं'}
 
 — मेरा गाँव ऐप
         `
-    };
+    });
 
-    try {
-        await transporter.sendMail(mailOptions);
-        console.log(`✅ ईमेल भेज दी गई: ${official.email}`);
-    } catch (err) {
-        console.log(`❌ ईमेल भेजने में गलती (${official.email}):`, err.message);
-    }
+    if (ok) console.log(`✅ ईमेल भेज दी गई: ${official.email}`);
+    return ok;
 }
 
+// एडमिन को अधिकारी वेरिफिकेशन मेल
 async function sendAdminVerificationEmail(user, approveUrl, rejectUrl) {
-    const mailOptions = {
-        from: `"मेरा गाँव" <${process.env.GMAIL_USER}>`,
-        to: process.env.ADMIN_EMAIL,
+    const ok = await sendMail({
+        to: process.env.ADMIN_EMAIL || process.env.MAIL_FROM,
         subject: `🆕 नया ${user.role} अकाउंट वेरिफिकेशन — ${user.village || user.district}`,
         html: `
           <p><b>नाम:</b> ${user.name}</p>
@@ -71,26 +91,10 @@ async function sendAdminVerificationEmail(user, approveUrl, rejectUrl) {
             &nbsp;
             <a href="${rejectUrl}" style="padding:10px 16px;background:#A8402E;color:white;text-decoration:none;border-radius:6px;">❌ रिजेक्ट करें</a>
           </p>`
-    };
-    try { await transporter.sendMail(mailOptions); console.log('✅ एडमिन वेरिफिकेशन मेल भेजी गई'); }
-    catch(err){ console.log('❌ एडमिन मेल एरर:', err.message); }
+    });
+
+    if (ok) console.log('✅ एडमिन वेरिफिकेशन मेल भेजी गई');
+    return ok;
 }
 
-async function sendOtpEmail(toEmail, otp) {
-    const mailOptions = {
-        from: `"मेरा गाँव" <${process.env.GMAIL_USER}>`,
-        to: toEmail,
-        subject: `आपका OTP: ${otp}`,
-        text: `आपका सत्यापन कोड है: ${otp}\n\nयह किसी के साथ साझा न करें।\n\n— मेरा गाँव ऐप`
-    };
-    try {
-        await transporter.sendMail(mailOptions);
-        console.log(`✅ OTP मेल भेजी गई: ${toEmail}`);
-        return true;
-    } catch (err) {
-        console.log(`❌ OTP मेल एरर (${toEmail}):`, err.message);
-        return false;
-    }
-}
-
-module.exports = { sendComplaintEmail, sendAdminVerificationEmail, sendOtpEmail };
+module.exports = { sendOtpEmail, sendComplaintEmail, sendAdminVerificationEmail };
