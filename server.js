@@ -21,6 +21,76 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(cors({ origin: ['https://mera-gaon-app.vercel.app', 'http://localhost:5500', 'http://127.0.0.1:5500'] }));
+const jwt = require('jsonwebtoken');
+
+const LEVEL_OF_ROLE = { 'सरपंच': 1, 'BDO': 2, 'DC/SDM': 3 };
+
+function makeToken(user) {
+    return jwt.sign({ id: String(user._id) }, process.env.JWT_SECRET, { expiresIn: '30d' });
+}
+
+async function userFromReq(req) {
+    const h = req.headers.authorization || '';
+    if (!h.startsWith('Bearer ')) return null;
+    try {
+        const d = jwt.verify(h.slice(7), process.env.JWT_SECRET);
+        const u = await User.findById(d.id);
+        return (u && u.isVerified) ? u : null;
+    } catch (e) { return null; }
+}
+
+async function auth(req, res, next) {
+    const u = await userFromReq(req);
+    if (!u) return res.status(401).json({ success: false, error: 'कृपया दोबारा लॉगिन करें' });
+    req.user = u;
+    next();
+}
+
+async function optionalAuth(req, res, next) {
+    req.user = await userFromReq(req);
+    next();
+}
+
+function officialOnly(req, res, next) {
+    if (!LEVEL_OF_ROLE[req.user.role]) return res.status(403).json({ success: false, error: 'यह सिर्फ अधिकारियों के लिए है' });
+    next();
+}
+
+function adminOnly(req, res, next) {
+    if (!process.env.ADMIN_SECRET || req.headers['x-admin-secret'] !== process.env.ADMIN_SECRET) {
+        return res.status(403).json({ success: false, error: 'अनुमति नहीं है' });
+    }
+    next();
+}
+
+// क्या यह user इस शिकायत के इलाके का है?
+function inJurisdiction(user, c) {
+    const loc = c.location || {};
+    if (user.role === 'सरपंच') return loc.district === user.district && loc.village === user.village;
+    if (user.role === 'BDO') return loc.district === user.district && loc.block === user.block;
+    if (user.role === 'DC/SDM') return loc.district === user.district;
+    return loc.district === user.district && loc.village === user.village; // नागरिक
+}
+
+// क्या यह अधिकारी अभी इस शिकायत पर action ले सकता है?
+function canAct(user, c) {
+    return LEVEL_OF_ROLE[user.role] === c.currentLevel
+        && inJurisdiction(user, c)
+        && !['Resolved', 'Withdrawn'].includes(c.status);
+}
+
+// पब्लिक को भेजने से पहले private चीज़ें हटाना
+function publicView(c, userId) {
+    const o = c.toObject ? c.toObject() : { ...c };
+    const uid = userId ? String(userId) : null;
+    const sup = (o.supporters || []).map(String);
+    o.isMine = !!(uid && o.userId && String(o.userId) === uid);
+    o.supportCount = sup.length;
+    o.isSupported = !!(uid && sup.includes(uid));
+    delete o.userId;
+    delete o.supporters;
+    return o;
+}
 const path = require('path'); 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -37,6 +107,7 @@ cloudinary.config({
 // --- CHAT MODEL ---
 const chatSchema = new mongoose.Schema({
   village: { type: String, required: true }, // Sirf isi gaon ke logon ko dikhega
+  district: { type: String, default: '' },
   senderId: { type: String, required: true },
   senderName: { type: String, required: true },
   text: { type: String, required: true }
@@ -96,12 +167,14 @@ app.post('/api/auth/send-otp', async (req, res) => {
 app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
     try {
         const { name, phone, password, role, district, block, village, email, otp } = req.body;
+        if (!['', 'citizen', 'सरपंच', 'BDO', 'DC/SDM'].includes(role || '')) {
+            return res.status(400).json({ success: false, error: 'गलत पद' });
+        }
 
         const record = global.otpStore && global.otpStore[email];
         if (!record || record.otp !== otp || Date.now() > record.expiresAt) {
             return res.status(400).json({ success: false, error: '❌ गलत या expire OTP! दोबारा OTP भेजें।' });
         }
-        delete global.otpStore[email];
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // चेक करें कि फोन नंबर पहले से रजिस्टर तो नहीं है
@@ -127,7 +200,7 @@ app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
 
         const safeUser = newUser.toObject();
         delete safeUser.password;
-        res.json({ success: true, message: 'अकाउंट बन गया!', user: safeUser });
+        res.json({ success: true, message: 'अकाउंट बन गया!', user: safeUser, token: isVerified ? makeToken(newUser) : undefined });
     } catch (error) {
         console.error("रजिस्ट्रेशन में एरर आया:", error);
         res.status(500).json({ success: false, error: error.message });
@@ -192,43 +265,48 @@ async function findOfficialForComplaint(complaint) {
     return official;
 }
 
-app.post('/api/complaints/new', upload.array('images', 5), async (req, res) => {
+app.post('/api/complaints/new', auth, upload.array('images', 5), async (req, res) => {
     try {
-        const { category, desc, isAnonymous, citizenName, district, block, village, userId } = req.body;
+        if (req.user.role !== 'citizen') {
+            return res.status(403).json({ success: false, error: 'सिर्फ नागरिक शिकायत दर्ज कर सकते हैं' });
+        }
+        const { category, desc, isAnonymous } = req.body;
+        if (!desc || !desc.trim()) return res.status(400).json({ success: false, error: 'विवरण लिखें' });
+        if (!CATEGORY_TO_DEPT[category]) return res.status(400).json({ success: false, error: 'गलत श्रेणी' });
+
+        const cleanDesc = desc.trim().slice(0, 1000);
         const deadline = new Date();
         deadline.setDate(deadline.getDate() + 5);
-
         const mediaUrls = req.files ? req.files.map(f => f.path) : [];
 
         const newComplaint = new Complaint({
-            title: desc.length > 40 ? desc.substring(0, 40) + '...' : desc,
-            category: category,
-            description: desc,
-            mediaUrls: mediaUrls,
-            citizenName: isAnonymous === 'true' ? '👤 पहचान गुप्त रखी गई' : citizenName,
-            userId: userId,
-            location: { district, block, village },
-            currentLevel: category === 'पंचायत' ? 2 : 1,   // 👈 यह लाइन जोड़ो
+            title: cleanDesc.length > 40 ? cleanDesc.substring(0, 40) + '...' : cleanDesc,
+            category,
+            description: cleanDesc,
+            mediaUrls,
+            citizenName: isAnonymous === 'true' ? '👤 पहचान गुप्त रखी गई' : req.user.name,
+            userId: String(req.user._id),
+            location: { district: req.user.district, block: req.user.block, village: req.user.village },
+            currentLevel: category === 'पंचायत' ? 2 : 1,
             escalationDeadline: deadline
         });
 
         await newComplaint.save();
-        // तुरंत लेवल-1 (सरपंच) को सूचित करना
         const official = await findOfficialForComplaint(newComplaint);
         if (official) {
             console.log(`📧 नई शिकायत की मेल जाएगी: ${official.name} (${official.email})`);
             sendComplaintEmail(official, newComplaint);
         } else {
-            console.log(`⚠️ इस गाँव के सरपंच की जानकारी अभी दर्ज नहीं है: ${village}`);
+            console.log(`⚠️ इस गाँव के सरपंच की जानकारी अभी दर्ज नहीं है: ${req.user.village}`);
         }
-        res.json({ success: true, message: 'शिकायत सफलतापूर्वक दर्ज हो गई!', complaint: newComplaint });
+        res.json({ success: true, message: 'शिकायत सफलतापूर्वक दर्ज हो गई!', complaint: publicView(newComplaint, req.user._id) });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
 // --- अधिकारी जोड़ना/अपडेट करना (एडमिन पैनल से इस्तेमाल होगा) ---
-app.post('/api/officials', async (req, res) => {
+app.post('/api/officials', adminOnly, async (req, res) => {
     try {
         const { level, department, name, email, phone, district, block, village } = req.body;
 
@@ -249,7 +327,7 @@ app.post('/api/officials', async (req, res) => {
 });
 
 // --- सभी अधिकारी देखना (एडमिन पैनल के लिए लिस्ट) ---
-app.get('/api/officials', async (req, res) => {
+app.get('/api/officials', adminOnly, async (req, res) => {
     try {
         const officials = await Official.find().sort({ role: 1 });
         res.json(officials);
@@ -259,64 +337,72 @@ app.get('/api/officials', async (req, res) => {
 });
 
 
-app.get('/api/complaints', async (req, res) => {
+app.get('/api/complaints', optionalAuth, async (req, res) => {
     try {
-        const { village, district } = req.query;   // 👈 अब गाँव के हिसाब से फ़िल्टर
-        let filter = { status: { $ne: 'Withdrawn' } };
+        const { village, district } = req.query;
+        if (!village && !district) return res.json([]);
+        const filter = { status: { $ne: 'Withdrawn' } };
+        if (district) filter['location.district'] = district;
         if (village) filter['location.village'] = village;
-        else if (district) filter['location.district'] = district;
 
-        const complaints = await Complaint.find(filter).sort({ createdAt: -1 });
-        res.json(complaints);
+        const complaints = await Complaint.find(filter).sort({ createdAt: -1 }).limit(200);
+        const uid = req.user ? req.user._id : null;
+        res.json(complaints.map(c => publicView(c, uid)));
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-app.get('/api/complaints/:id', async (req, res) => {
+app.get('/api/complaints/:id', optionalAuth, async (req, res) => {
     try {
         const complaint = await Complaint.findById(req.params.id);
         if (!complaint) return res.status(404).json({ success: false, error: 'शिकायत नहीं मिली!' });
-        res.json(complaint);
+        res.json(publicView(complaint, req.user ? req.user._id : null));
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
-// --- 1. अधिकारी के डैशबोर्ड के लिए — उसकी जगह की शिकायतें ---
-app.get('/api/officials/my-complaints', async (req, res) => {
+app.get('/api/officials/my-complaints', auth, officialOnly, async (req, res) => {
     try {
-        const { role, district, block, village } = req.query;
-        let filter = { status: { $ne: 'Withdrawn' } };
-
-        if (role === 'सरपंच') {
-            filter['location.district'] = district;
-            filter['location.village'] = village;
-        } else if (role === 'BDO') {
-            filter['location.district'] = district;
-            filter['location.block'] = block;
-        } else if (role === 'DC/SDM') {
-            filter['location.district'] = district;
+        const u = req.user;
+        const filter = { status: { $ne: 'Withdrawn' }, 'location.district': u.district };
+        if (u.role === 'सरपंच') {
+            filter['location.village'] = u.village;
+            filter.category = { $ne: 'पंचायत' };
+        } else if (u.role === 'BDO') {
+            filter['location.block'] = u.block;
         }
-
-        const complaints = await Complaint.find(filter).sort({ createdAt: -1 });
-        res.json(complaints);
+        const list = await Complaint.find(filter).sort({ createdAt: -1 }).limit(200);
+        res.json(list.map(c => {
+            const v = publicView(c, null);
+            v.canAct = canAct(u, c);
+            return v;
+        }));
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// --- 2. अधिकारी का कमिटमेंट/कमेंट देना (शिकायत लॉक हो जाएगी) ---
-app.post('/api/complaints/:id/commit', async (req, res) => {
+// कमिटमेंट देना
+app.post('/api/complaints/:id/commit', auth, officialOnly, async (req, res) => {
     try {
-        const { days, comment, authorName, authorRole } = req.body;
+        const days = parseInt(req.body.days, 10);
+        if (!days || days < 1 || days > 30) {
+            return res.status(400).json({ success: false, error: 'दिन 1 से 30 के बीच होने चाहिए' });
+        }
         const complaint = await Complaint.findById(req.params.id);
         if (!complaint) return res.status(404).json({ success: false, error: 'शिकायत नहीं मिली!' });
+        if (!canAct(req.user, complaint)) {
+            return res.status(403).json({ success: false, error: 'यह शिकायत अभी आपके स्तर पर नहीं है' });
+        }
+        if (complaint.isLocked) return res.status(400).json({ success: false, error: 'पहले से कमिटमेंट दर्ज है' });
 
         const lockUntil = new Date();
-        lockUntil.setDate(lockUntil.getDate() + parseInt(days));
+        lockUntil.setDate(lockUntil.getDate() + days);
 
         complaint.comments.push({
-            authorName, authorRole, text: comment,
+            authorName: req.user.name, authorRole: req.user.role,
+            text: (req.body.comment || '').trim().slice(0, 500) || `${days} दिन में समाधान का वादा`,
             isCommitment: true, commitmentDays: days
         });
         complaint.isLocked = true;
@@ -324,41 +410,118 @@ app.post('/api/complaints/:id/commit', async (req, res) => {
         complaint.escalationDeadline = lockUntil;
         complaint.status = 'Progress';
 
-        await complaint.save();
-        res.json({ success: true, message: `✅ ${days} दिन का कमिटमेंट दर्ज हो गया, शिकायत लॉक कर दी गई है।`, complaint });
+        await complaint.save({ validateModifiedOnly: true });
+        res.json({ success: true, message: `✅ ${days} दिन का कमिटमेंट दर्ज हो गया, शिकायत लॉक कर दी गई है।` });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// --- 3. आम कमेंट जोड़ना (नागरिक या अधिकारी दोनों के लिए) ---
-app.post('/api/complaints/:id/comment', async (req, res) => {
+// कमेंट (नागरिक और अधिकारी दोनों, अपने इलाके की शिकायत पर)
+app.post('/api/complaints/:id/comments', auth, async (req, res) => {
     try {
-        const { text, authorName, authorRole } = req.body;
+        const text = (req.body.text || '').trim().slice(0, 500);
+        if (!text) return res.status(400).json({ success: false, error: 'कमेंट खाली है' });
+
         const complaint = await Complaint.findById(req.params.id);
         if (!complaint) return res.status(404).json({ success: false, error: 'शिकायत नहीं मिली!' });
+        if (!inJurisdiction(req.user, complaint)) {
+            return res.status(403).json({ success: false, error: 'आप इस शिकायत पर कमेंट नहीं कर सकते' });
+        }
 
-        complaint.comments.push({ authorName, authorRole, text, isCommitment: false });
-        await complaint.save();
-        res.json({ success: true, complaint });
+        const isOwner = String(complaint.userId) === String(req.user._id);
+        const anon = (complaint.citizenName || '').includes('गुप्त');
+        complaint.comments.push({
+            authorName: (isOwner && anon) ? 'शिकायतकर्ता' : req.user.name,
+            authorRole: req.user.role,
+            text,
+            isCommitment: false
+        });
+        await complaint.save({ validateModifiedOnly: true });
+        res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// --- 4. नागरिक का "हाँ/नहीं" कन्फर्मेशन ---
-app.post('/api/complaints/:id/confirm-resolution', async (req, res) => {
+// "काम पूरा किया" -> नागरिक से पुष्टि माँगना
+app.post('/api/complaints/:id/mark-done', auth, officialOnly, async (req, res) => {
     try {
-        const { resolved } = req.body; // true या false
         const complaint = await Complaint.findById(req.params.id);
         if (!complaint) return res.status(404).json({ success: false, error: 'शिकायत नहीं मिली!' });
+        if (!canAct(req.user, complaint)) {
+            return res.status(403).json({ success: false, error: 'यह शिकायत अभी आपके स्तर पर नहीं है' });
+        }
+        complaint.citizenConfirmationPending = true;
+        complaint.isLocked = true;          // नागरिक के जवाब तक auto-escalation रुका रहे
+        complaint.lockUntil = new Date();
+        complaint.status = 'Progress';
+        complaint.comments.push({
+            authorName: req.user.name, authorRole: req.user.role,
+            text: 'अधिकारी ने काम पूरा होने की सूचना दी है, नागरिक की पुष्टि का इंतज़ार है।',
+            isCommitment: false
+        });
+        await complaint.save({ validateModifiedOnly: true });
+        res.json({ success: true, message: '✅ नागरिक से पुष्टि माँगी गई है।' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
+// "आगे भेजें" -> अगले लेवल पर escalate
+app.post('/api/complaints/:id/escalate', auth, officialOnly, async (req, res) => {
+    try {
+        const complaint = await Complaint.findById(req.params.id);
+        if (!complaint) return res.status(404).json({ success: false, error: 'शिकायत नहीं मिली!' });
+        if (!canAct(req.user, complaint)) {
+            return res.status(403).json({ success: false, error: 'यह शिकायत अभी आपके स्तर पर नहीं है' });
+        }
+        if (complaint.currentLevel >= 3) {
+            return res.status(400).json({ success: false, error: 'यह पहले से सबसे ऊपर के स्तर पर है' });
+        }
+        if (complaint.isLocked) {
+            return res.status(400).json({ success: false, error: 'कमिटमेंट के दौरान आगे नहीं भेज सकते' });
+        }
+
+        complaint.currentLevel += 1;
+        complaint.citizenConfirmationPending = false;
+        const d = new Date();
+        d.setDate(d.getDate() + 7);
+        complaint.escalationDeadline = d;
+        complaint.comments.push({
+            authorName: req.user.name, authorRole: req.user.role,
+            text: `${req.user.role} ने शिकायत अगले स्तर पर भेजी।`,
+            isCommitment: false
+        });
+        await complaint.save({ validateModifiedOnly: true });
+
+        const next = await findOfficialForComplaint(complaint);
+        if (next) sendComplaintEmail(next, complaint);
+
+        res.json({ success: true, message: '⬆️ शिकायत अगले अधिकारी को भेज दी गई।' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/complaints/:id/confirm-resolution', auth, async (req, res) => {
+    try {
+        const { resolved } = req.body;
+        const complaint = await Complaint.findById(req.params.id);
+        if (!complaint) return res.status(404).json({ success: false, error: 'शिकायत नहीं मिली!' });
+        if (String(complaint.userId) !== String(req.user._id)) {
+            return res.status(403).json({ success: false, error: 'सिर्फ शिकायतकर्ता ही पुष्टि कर सकता है' });
+        }
+        if (!complaint.citizenConfirmationPending) {
+            return res.status(400).json({ success: false, error: 'अभी पुष्टि माँगी नहीं गई है' });
+        }
+
+        let escalatedTo = null;
         if (resolved) {
             complaint.status = 'Resolved';
             complaint.citizenConfirmationPending = false;
             complaint.isLocked = false;
         } else {
-            // झूठा कमिटमेंट निकला — तुरंत अगले लेवल पर एस्केलेट
             complaint.currentLevel = Math.min(complaint.currentLevel + 1, 3);
             complaint.citizenConfirmationPending = false;
             complaint.isLocked = false;
@@ -369,9 +532,14 @@ app.post('/api/complaints/:id/confirm-resolution', async (req, res) => {
                 authorName: 'सिस्टम', authorRole: 'system',
                 text: `नागरिक ने बताया कि समस्या हल नहीं हुई — शिकायत लेवल ${complaint.currentLevel} पर भेजी गई।`
             });
+            escalatedTo = true;
         }
 
-        await complaint.save();
+        await complaint.save({ validateModifiedOnly: true });
+        if (escalatedTo) {
+            const next = await findOfficialForComplaint(complaint);
+            if (next) sendComplaintEmail(next, complaint);
+        }
         res.json({ success: true, message: resolved ? '✅ धन्यवाद! शिकायत हल मानी गई।' : '⚠️ अगले अधिकारी को भेज दिया गया है।' });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -379,12 +547,15 @@ app.post('/api/complaints/:id/confirm-resolution', async (req, res) => {
 });
 
 // --- शिकायत वापस लेने / दबाव में एस्केलेट करने की API ---
-app.post('/api/complaints/:id/withdraw', async (req, res) => {
+app.post('/api/complaints/:id/withdraw', auth, async (req, res) => {
   try {
     const { reason } = req.body; // 'completed', 'mistake', 'coerced'
     const complaint = await Complaint.findById(req.params.id);
 
     if (!complaint) return res.status(404).json({ success: false, error: 'शिकायत नहीं मिली!' });
+    if (String(complaint.userId) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, error: 'सिर्फ शिकायतकर्ता ही शिकायत वापस ले सकता है' });
+    }
 
     // अगर पुराने डेटा में title नहीं है, तो डिफ़ॉल्ट टाइटल दे दें ताकि Validation Fail न हो
     if (!complaint.title) {
@@ -412,13 +583,10 @@ app.post('/api/complaints/:id/withdraw', async (req, res) => {
   }
 });
 
-// प्रोफाइल के लिए सभी शिकायतें (Withdrawn सहित) लाने की API
-app.get('/api/my-complaints', async (req, res) => {
+app.get('/api/my-complaints', auth, async (req, res) => {
     try {
-        const { userId } = req.query;
-        if (!userId) return res.status(400).json({ success: false, error: 'userId ज़रूरी है' });
-        const complaints = await Complaint.find({ userId }).sort({ createdAt: -1 });
-        res.json(complaints);
+        const complaints = await Complaint.find({ userId: String(req.user._id) }).sort({ createdAt: -1 });
+        res.json(complaints.map(c => publicView(c, req.user._id)));
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -471,13 +639,9 @@ cron.schedule('0 0 * * *', async () => {
     } catch (error) {
         console.log('❌ एस्केलेशन एरर:', error);
     }
-});
+}, { timezone: 'Asia/Kolkata' });
 
-// Global Error Handler (Multer/Cloudinary के एरर पकड़ने के लिए)
-app.use((err, req, res, next) => {
-    console.error("🔥 Server Crash Error:", err);
-    res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
-});
+
 // --- गाँव के असली आँकड़े ---
 app.get('/api/village/stats', async (req, res) => {
     try {
@@ -560,33 +724,34 @@ app.post('/api/village/sarpanch', async (req, res) => {
 // 1. CHAT APIs (Gaon ki Baithak)
 // ==========================================
 
-// A. Chat mangwane ki API (Sirf specific gaon ki)
-app.get('/api/chat', async (req, res) => {
+app.get('/api/chat', auth, async (req, res) => {
   try {
-    const { village } = req.query;
-    if (!village) return res.status(400).json({ error: "गाँव का नाम नहीं मिला" });
-
-    // Sirf us gaon ke aakhri 100 message load karega
-    const messages = await Chat.find({ village: village })
-                               .sort({ createdAt: 1 })
+    const messages = await Chat.find({ village: req.user.village, district: req.user.district })
+                               .sort({ createdAt: -1 })
                                .limit(100);
-    res.json(messages);
+    res.json(messages.reverse().map(m => ({
+      _id: m._id, senderId: m.senderId, senderName: m.senderName, text: m.text, createdAt: m.createdAt
+    })));
   } catch (error) {
     console.error("Chat fetch error:", error);
     res.status(500).json({ error: "चैट लोड नहीं हो पाई" });
   }
 });
 
-// B. Naya message save karne ki API
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', auth, async (req, res) => {
   try {
-    const { village, senderId, senderName, text } = req.body;
-    if (!village || !text) return res.status(400).json({ error: "मैसेज खाली है" });
+    const text = (req.body.text || '').trim().slice(0, 1000);
+    if (!text) return res.status(400).json({ error: "मैसेज खाली है" });
 
-    const newMsg = new Chat({ village, senderId, senderName, text });
+    const newMsg = new Chat({
+      village: req.user.village,
+      district: req.user.district,
+      senderId: String(req.user._id),
+      senderName: req.user.name,
+      text
+    });
     await newMsg.save();
-    
-    res.json({ success: true, message: newMsg });
+    res.json({ success: true });
   } catch (error) {
     console.error("Chat save error:", error);
     res.status(500).json({ error: "मैसेज नहीं गया" });
@@ -596,10 +761,10 @@ app.post('/api/chat', async (req, res) => {
 // ==========================================
 // 2. SUPPORT API (समर्थन)
 // ==========================================
-app.post('/api/complaints/:id/support', async (req, res) => {
+app.post('/api/complaints/:id/support', auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId } = req.body;
+    const userId = String(req.user._id);
     if (!userId) return res.status(400).json({ error: "यूज़र आईडी नहीं मिली" });
 
     const complaint = await Complaint.findById(id);
@@ -679,6 +844,11 @@ app.post('/api/payment/verify', (req, res) => {
     } else {
         res.status(400).json({ success: false, error: "Payment Failed / Fake" });
     }
+});
+// Global Error Handler (Multer/Cloudinary के एरर पकड़ने के लिए)
+app.use((err, req, res, next) => {
+    console.error("🔥 Server Crash Error:", err);
+    res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
 });
 
 app.listen(PORT, () => {

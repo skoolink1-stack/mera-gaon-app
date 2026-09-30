@@ -806,6 +806,26 @@
   let loggedInUserId = "";
   let loggedInBlock = "";
   let currentActiveCard = null;
+    let authToken = '';
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  function authFetch(url, options = {}) {
+    options.headers = Object.assign({}, options.headers || {}, authToken ? { 'Authorization': 'Bearer ' + authToken } : {});
+    return fetch(url, options);
+  }
+
+  function statusHi(s) {
+    const m = { Pending: 'पेंडिंग', Progress: 'काम चालू', Resolved: 'हल हुआ', Withdrawn: 'वापस ली गई' };
+    if (!s) return 'पेंडिंग';
+    if (String(s).includes('Alert')) return '🚨 दबाव अलर्ट';
+    return m[s] || s;
+  }
+  function statusCls(s) {
+    return s === 'Resolved' ? 'done' : (s === 'Progress' ? 'progress' : 'pending');
+  }
 
   async function startPayment() {
       const res = await fetch(`${API_BASE}/api/payment/create-order`, { method: 'POST' });
@@ -894,16 +914,13 @@ async function confirmWithdraw(id) {
   }
 }
 
-  // --- MongoDB से शिकायतें लोड करके स्क्रीन पर दिखाने का फंक्शन ---
-  // 1. सर्वर से शिकायतें मंगाकर रेंडर करने का फ़ंक्शन
 async function loadComplaintsFromDB() {
   loadVillageStats();
   try {
-    const res = await fetch(`https://mera-gaon-app.onrender.com/api/complaints?village=${encodeURIComponent(loggedInVillage)}`);
+    const res = await authFetch(`${API_BASE}/api/complaints?village=${encodeURIComponent(loggedInVillage)}&district=${encodeURIComponent(loggedInDistrict)}`);
     const data = await res.json();
-    const complaintsList = Array.isArray(data) ? data : (data.complaints || []);
-    const activeComplaints = complaintsList.filter(c => c && c.status !== 'Withdrawn');
-    renderComplaints(activeComplaints);
+    const list = Array.isArray(data) ? data : [];
+    renderComplaints(list.filter(c => c && c.status !== 'Withdrawn'));
   } catch (err) {
     console.error("डेटा लोड करने में एरर:", err);
   }
@@ -913,57 +930,48 @@ function renderComplaints(complaints) {
   const feed = document.getElementById('feed');
   if (!feed) return;
 
-  feed.innerHTML = '';
-
   if (complaints.length === 0) {
     feed.innerHTML = '<p style="text-align:center; padding: 20px;">कोई सक्रिय शिकायत नहीं है।</p>';
     return;
   }
 
-  complaints.forEach(c => {
-    if (c.status === 'Withdrawn') return;
-
-    // mediaUrls एरे चेक करें, बैकअप के लिए पुराना c.imageUrl
-    const mediaList = (c.mediaUrls && c.mediaUrls.length > 0) 
-      ? c.mediaUrls 
-      : (c.imageUrl ? [c.imageUrl] : []);
-
+  feed.innerHTML = complaints.map(c => {
+    const mediaList = (c.mediaUrls && c.mediaUrls.length > 0) ? c.mediaUrls : (c.imageUrl ? [c.imageUrl] : []);
     let imgHtml = `<div class="media-box">📷 फोटो उपलब्ध नहीं</div>`;
-
     if (mediaList.length > 0) {
-      const firstImg = mediaList[0].startsWith('http') ? mediaList[0] : `https://mera-gaon-app.onrender.com${mediaList[0]}`;
+      const first = mediaList[0].startsWith('http') ? mediaList[0] : `${API_BASE}${mediaList[0]}`;
       imgHtml = `
         <div class="media-box" style="padding:0; overflow:hidden; border:1px solid #DED4B6; position:relative; height:180px;">
-          <img src="${firstImg}" style="width:100%; height:100%; object-fit:cover;">
+          <img src="${esc(first)}" style="width:100%; height:100%; object-fit:cover;">
           ${mediaList.length > 1 ? `<span style="position:absolute; right:8px; bottom:8px; background:rgba(0,0,0,0.7); color:white; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">+${mediaList.length - 1} फ़ोटो</span>` : ''}
         </div>`;
     }
 
-    feed.innerHTML += `
-      <div class="post-card" data-id="${c._id}" data-category="${c.category || 'अन्य'}" onclick="openDetail(this)" style="cursor:pointer;">
+    const confirmBtn = (c.isMine && c.citizenConfirmationPending) ? `
+      <button onclick="event.stopPropagation(); openConfirmModal('${c._id}')" style="background:var(--haldi); color:white; border:none; padding:6px 10px; border-radius:4px; font-size:11px; font-weight:bold;">
+        🔔 समाधान की पुष्टि करें
+      </button>` : '';
+
+    return `
+      <div class="post-card" data-id="${c._id}" data-category="${esc(c.category || 'अन्य')}" onclick="openDetail(this)" style="cursor:pointer;">
         <div class="post-head">
-          <span class="cat-tag">📌 ${c.category || 'सामान्य'}</span>
-          <span class="status ${c.status === 'Resolved' ? 'done' : 'pending'}">${c.status || 'पेंडिंग'}</span>
+          <span class="cat-tag">📌 ${esc(c.category || 'सामान्य')}</span>
+          <span class="status ${statusCls(c.status)}">${esc(statusHi(c.status))}</span>
         </div>
         <div class="post-body">
-          <h3>${(c.description || 'शिकायत').substring(0, 40)}</h3>
+          <h3>${esc((c.description || 'शिकायत').substring(0, 40))}</h3>
           ${imgHtml}
-          <p>${c.description || ''}</p>
+          <p>${esc(c.description || '')}</p>
         </div>
         <div class="post-foot">
-          <span class="identity">${c.citizenName || 'नागरिक'}</span>
-          ${c.citizenConfirmationPending ? `
-            <button onclick="event.stopPropagation(); openConfirmModal('${c._id}')" style="background:var(--haldi); color:white; border:none; padding:6px 10px; border-radius:4px; font-size:11px; font-weight:bold;">
-              🔔 समाधान की पुष्टि करें
-            </button>
-          ` : ''}
+          <span class="identity">${esc(c.citizenName || 'नागरिक')}</span>
+          ${confirmBtn}
           <div class="actions">
-            <button class="btn-sm support" onclick="event.stopPropagation(); toggleSupport(this, '${c._id}')">🤝 समर्थन (0)</button>
+            <button class="btn-sm support${c.isSupported ? ' supported' : ''}" onclick="event.stopPropagation(); toggleSupport(this, '${c._id}')">🤝 समर्थन (${c.supportCount || 0})</button>
           </div>
         </div>
-      </div>
-    `;
-  });
+      </div>`;
+  }).join('');
 }
 
   let currentPostTitle = ""; 
@@ -1034,6 +1042,7 @@ function renderComplaints(complaints) {
       const result = await response.json();
 
       if(result.success) {
+        authToken = result.token || '';
         loggedInUserName = result.user.name;
         loggedInUserRole = result.user.role === 'citizen' ? '' : result.user.role;
         loggedInVillage = result.user.village;      
@@ -1165,6 +1174,7 @@ function renderComplaints(complaints) {
            window.location.reload();
            return;
         }
+        authToken = result.token || '';
         loggedInUserName = result.user.name;
         loggedInVillage = result.user.village;
         loggedInDistrict = result.user.district;
@@ -1217,7 +1227,7 @@ async function toggleSupport(btn, complaintId) {
 
   try {
     // बैकएंड पर समर्थन टॉगल करने की API कॉल
-    const res = await fetch(`${API_BASE}/api/complaints/${complaintId}/support`, {
+    const res = await authFetch(`${API_BASE}/api/complaints/${complaintId}/support`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: loggedInUserId })
@@ -1268,7 +1278,7 @@ async function toggleSupport(btn, complaintId) {
 
       // अगर MongoDB ID है तो सर्वर से डेटा लें
       if (id && id.length === 24) {
-        const res = await fetch(`https://mera-gaon-app.onrender.com/api/complaints/${id}`);
+        const res = await authFetch(`https://mera-gaon-app.onrender.com/api/complaints/${id}`);
         if (res.ok) c = await res.json();
       }
 
@@ -1287,7 +1297,7 @@ async function toggleSupport(btn, complaintId) {
     } 
     // 2. अगर सीधी ID पास हुई है
     else if (typeof elementOrId === 'string') {
-      const res = await fetch(`https://mera-gaon-app.onrender.com/api/complaints/${elementOrId}`);
+      const res = await authFetch(`https://mera-gaon-app.onrender.com/api/complaints/${elementOrId}`);
       if (res.ok) c = await res.json();
     }
 
@@ -1325,12 +1335,12 @@ async function toggleSupport(btn, complaintId) {
           ${mediaHtml}
 
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <span class="status pending">${c.status || 'पेंडिंग'}</span>
+            <span class="status ${statusCls(c.status)}">${esc(statusHi(c.status))}</span>
             <span style="font-size:12px; color:var(--ink-soft); font-weight:bold;">${c.category || ''}</span>
           </div>
 
           <h2 style="font-size:20px; font-family:'Noto Serif Devanagari',serif; margin:8px 0 10px; line-height:1.3;">
-            ${c.title || c.text || 'शिकायत'}
+            ${esc(c.title || c.text || 'शिकायत')}
           </h2>
 
           <div style="font-size:12px; color:var(--ink-soft); margin-bottom:15px; display:flex; gap:12px;">
@@ -1339,7 +1349,7 @@ async function toggleSupport(btn, complaintId) {
           </div>
 
           <p style="font-size:14px; line-height:1.6; color:#333; background:var(--card); padding:12px; border-radius:6px; border:1px solid var(--paper-line); margin-bottom:20px;">
-            ${c.description || c.text || 'कोई विवरण नहीं उपलब्ध है।'}
+            ${esc(c.description || c.text || 'कोई विवरण नहीं उपलब्ध है।')}
           </p>
 
           <!-- 🎯 शिकायत ट्रैकर (ESCALATION TIMELINE) -->
@@ -1378,6 +1388,11 @@ async function toggleSupport(btn, complaintId) {
           </div>
         </div>
       `;
+    }
+
+    if (detailContentDiv && !c.isMine) {
+      const wb = detailContentDiv.querySelector('button[onclick^="withdrawComplaint"]');
+      if (wb && wb.parentElement) wb.parentElement.remove();
     }
 
     // स्क्रीन स्विच करें और वर्टिकल स्क्रॉल एनेबल करें
@@ -1422,45 +1437,78 @@ async function toggleSupport(btn, complaintId) {
 let activeConfirmComplaintId = null;
 
 async function loadOfficialComplaints() {
-  document.getElementById('officialSubtitle').innerText =
-    `${loggedInUserRole} — ${loggedInVillage || loggedInDistrict}`;
+  const place = loggedInUserRole === 'सरपंच' ? loggedInVillage
+              : loggedInUserRole === 'BDO' ? loggedInBlock
+              : loggedInDistrict;
+  document.getElementById('officialSubtitle').innerText = `${loggedInUserRole} — ${place}`;
 
-  const params = new URLSearchParams({
-    role: loggedInUserRole, district: loggedInDistrict,
-    block: loggedInBlock || '',
-    village: loggedInVillage
-  });
-
-  const res = await fetch(`https://mera-gaon-app.onrender.com/api/officials/my-complaints?${params}`);
-  const complaints = await res.json();
   const feed = document.getElementById('officialFeed');
-  feed.innerHTML = '';
+  feed.innerHTML = '<p style="text-align:center; padding:20px;">लोड हो रहा है... ⏳</p>';
 
-  if (complaints.length === 0) {
-    feed.innerHTML = '<p style="text-align:center; padding:20px;">कोई शिकायत नहीं है।</p>';
-    return;
+  try {
+    const res = await authFetch(`${API_BASE}/api/officials/my-complaints`);
+    const complaints = await res.json();
+    if (!res.ok) {
+      feed.innerHTML = `<p style="text-align:center; padding:20px;">${esc(complaints.error || 'एरर आया')}</p>`;
+      return;
+    }
+    if (complaints.length === 0) {
+      feed.innerHTML = '<p style="text-align:center; padding:20px;">कोई शिकायत नहीं है।</p>';
+      return;
+    }
+
+    const levelName = { 1: 'सरपंच', 2: 'BDO', 3: 'DC/SDM' };
+
+    feed.innerHTML = complaints.map(c => {
+      const m = (c.mediaUrls || [])[0];
+      const mUrl = m ? (m.startsWith('http') ? m : `${API_BASE}${m}`) : '';
+      const img = mUrl ? `
+        <div class="media-box" style="padding:0; overflow:hidden; height:160px;">
+          <img src="${esc(mUrl)}" onclick="openLightbox('${esc(mUrl)}')" style="width:100%; height:100%; object-fit:cover; cursor:pointer;">
+        </div>` : '';
+
+      const btn = (label, fn, bg, color) =>
+        `<button class="btn-sm" onclick="${fn}" style="background:${bg}; color:${color}; border-color:${bg};">${label}</button>`;
+
+      let info = '';
+      let buttons = '';
+      if (c.status === 'Resolved') {
+        info = '✅ यह शिकायत हल हो चुकी है';
+      } else if (!c.canAct) {
+        info = `ℹ️ अभी यह शिकायत ${levelName[c.currentLevel] || ''} स्तर पर है`;
+      } else if (c.citizenConfirmationPending) {
+        info = '⏳ नागरिक की पुष्टि का इंतज़ार';
+      } else if (c.isLocked) {
+        info = `🔒 कमिटमेंट — ${new Date(c.lockUntil).toLocaleDateString('hi-IN')} तक`;
+        buttons += btn('🏁 काम पूरा किया', `officialAction('${c._id}','mark-done')`, 'var(--neem)', 'white');
+      } else {
+        buttons += btn('✅ कमिटमेंट दें', `openCommitModal('${c._id}')`, 'var(--neem)', 'white');
+        buttons += btn('🏁 काम पूरा किया', `officialAction('${c._id}','mark-done')`, 'var(--mitti)', 'white');
+        if (c.currentLevel < 3) buttons += btn('⬆️ आगे भेजें', `officialAction('${c._id}','escalate')`, 'var(--red-flag)', 'white');
+      }
+      buttons += btn('💬 कमेंट', `openCommentsModal('${c._id}')`, 'var(--card)', 'var(--ink)');
+
+      return `
+        <div class="post-card" data-category="${esc(c.category)}">
+          <div class="post-head">
+            <span class="cat-tag">📌 ${esc(c.category)}</span>
+            <span class="status ${statusCls(c.status)}">${esc(statusHi(c.status))}</span>
+          </div>
+          <div class="post-body">
+            <h3>${esc(c.title)}</h3>
+            ${img}
+            <p>${esc(c.description)}</p>
+            <p style="font-size:11.5px; color:var(--ink-soft);">📍 ${esc([c.location?.village, c.location?.block].filter(Boolean).join(', '))} · 👤 ${esc(c.citizenName || 'नागरिक')}</p>
+          </div>
+          <div class="post-foot" style="flex-direction:column; align-items:stretch; gap:8px;">
+            ${info ? `<span class="identity">${info}</span>` : ''}
+            <div class="actions" style="flex-wrap:wrap;">${buttons}</div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    feed.innerHTML = '<p style="text-align:center; padding:20px;">सर्वर से कनेक्ट नहीं हो पा रहा है।</p>';
   }
-
-  complaints.forEach(c => {
-    feed.innerHTML += `
-      <div class="post-card">
-        <div class="post-head">
-          <span class="cat-tag">📌 ${c.category}</span>
-          <span class="status ${c.status === 'Resolved' ? 'done' : 'pending'}">${c.status}</span>
-        </div>
-        <div class="post-body">
-          <h3>${c.title}</h3>
-          <p>${c.description}</p>
-        </div>
-        <div class="post-foot">
-          ${c.isLocked
-            ? `<span class="identity">🔒 लॉक — ${new Date(c.lockUntil).toLocaleDateString('hi-IN')} तक</span>`
-            : `<button class="btn-sm" onclick="openCommitModal('${c._id}')" style="background:var(--neem); color:white;">कमिटमेंट दें</button>`
-          }
-        </div>
-      </div>
-    `;
-  });
 }
 
 function openCommitModal(id) {
@@ -1473,15 +1521,34 @@ async function submitCommitment() {
   const comment = document.getElementById('commitComment').value;
   if (!days || days < 1) { alert('कृपया दिन डालें'); return; }
 
-  const res = await fetch(`https://mera-gaon-app.onrender.com/api/complaints/${activeCommitComplaintId}/commit`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ days, comment, authorName: loggedInUserName, authorRole: loggedInUserRole })
-  });
-  const data = await res.json();
-  alert(data.message);
-  document.getElementById('commitModal').style.display = 'none';
-  loadOfficialComplaints();
+  try {
+    const res = await authFetch(`${API_BASE}/api/complaints/${activeCommitComplaintId}/commit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ days, comment })
+    });
+    const data = await res.json().catch(() => ({}));
+    alert(data.message || data.error || 'एरर आया');
+    if (res.ok) {
+      document.getElementById('commitModal').style.display = 'none';
+      document.getElementById('commitDays').value = '';
+      document.getElementById('commitComment').value = '';
+      loadOfficialComplaints();
+    }
+  } catch (e) { alert('सर्वर से कनेक्ट नहीं हो पा रहा है।'); }
+}
+
+async function officialAction(id, action) {
+  const msg = action === 'mark-done'
+    ? 'क्या काम सच में पूरा हो गया है? नागरिक से पुष्टि माँगी जाएगी।'
+    : 'क्या यह शिकायत अगले अधिकारी को भेजनी है?';
+  if (!confirm(msg)) return;
+  try {
+    const res = await authFetch(`${API_BASE}/api/complaints/${id}/${action}`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    alert(data.message || data.error || 'एरर आया');
+    loadOfficialComplaints();
+  } catch (e) { alert('सर्वर से कनेक्ट नहीं हो पा रहा है।'); }
 }
 
 // नागरिक की तरफ से — जब उसकी शिकायत में confirmation pending हो तो यह बुलाओ
@@ -1491,7 +1558,7 @@ function openConfirmModal(id) {
 }
 
 async function submitConfirmation(resolved) {
-  const res = await fetch(`https://mera-gaon-app.onrender.com/api/complaints/${activeConfirmComplaintId}/confirm-resolution`, {
+  const res = await authFetch(`https://mera-gaon-app.onrender.com/api/complaints/${activeConfirmComplaintId}/confirm-resolution`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ resolved })
@@ -1625,7 +1692,7 @@ async function submitWithdrawal(id) {
   const reasonValue = selectedRadio ? selectedRadio.value : 'mistake';
 
   try {
-    const res = await fetch(`https://mera-gaon-app.onrender.com/api/complaints/${complaintId}/withdraw`, {
+    const res = await authFetch(`https://mera-gaon-app.onrender.com/api/complaints/${complaintId}/withdraw`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1690,15 +1757,21 @@ function renderComments(commentsList) {
     return;
   }
 
-  body.innerHTML = commentsList.map(c => `
-    <div class="comment-item">
-      <div class="c-head">
-        <span style="font-weight:bold;">${c.userName || 'नागरिक'}</span>
-        <span>${new Date(c.createdAt || Date.now()).toLocaleDateString('hi-IN')}</span>
-      </div>
-      <p class="c-text">${c.text}</p>
-    </div>
-  `).join('');
+  body.innerHTML = commentsList.map(c => {
+    const isOfficial = c.authorRole && c.authorRole !== 'citizen' && c.authorRole !== 'system';
+    const badge = isOfficial ? ` <span style="background:var(--neem-dark); color:white; font-size:10px; padding:1px 6px; border-radius:3px;">${esc(c.authorRole)}</span>` : '';
+    const commit = c.isCommitment ? `<div style="font-size:11.5px; color:var(--haldi); font-weight:bold; margin-bottom:3px;">🔒 ${esc(c.commitmentDays)} दिन का कमिटमेंट</div>` : '';
+    const when = c.createdAt ? new Date(c.createdAt).toLocaleDateString('hi-IN') : '';
+    return `
+      <div class="comment-item">
+        <div class="c-head">
+          <span style="font-weight:bold;">${esc(c.authorName || 'नागरिक')}${badge}</span>
+          <span>${when}</span>
+        </div>
+        ${commit}
+        <p class="c-text">${esc(c.text)}</p>
+      </div>`;
+  }).join('');
 }
 
 async function addComment() {
@@ -1707,17 +1780,16 @@ async function addComment() {
   if (!text) return;
 
   try {
-    // सर्वर पर कमेंट भेजें
-    const res = await fetch(`${API_BASE}/api/complaints/${currentPostId}/comments`, {
+    const res = await authFetch(`${API_BASE}/api/complaints/${currentPostId}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text, userName: loggedInUserName })
+      body: JSON.stringify({ text })
     });
-    const data = await res.json();
-    
+    const data = await res.json().catch(() => ({}));
+
     if (res.ok) {
       input.value = "";
-      openCommentsModal(currentPostId); // कमेंट्स दोबारा लोड करें
+      openCommentsModal(currentPostId);
     } else {
       alert("❌ कमेंट सेव नहीं हुआ: " + (data.error || ""));
     }
@@ -1783,30 +1855,23 @@ async function addComment() {
     });
   });
 
-  async function submitComplaint() {
+    async function submitComplaint() {
     const category = document.getElementById('issueCategory').value;
     const desc = document.getElementById('issueDesc').value;
     const isAnonymous = document.getElementById('anonymousSwitch').classList.contains('on');
     const proofInput = document.getElementById('proofFile');
-    
-    // असली गाँव और आज की तारीख निकालना
-    const userVillage = loggedInVillage || document.getElementById('regVillage').value || document.getElementById('profVillage').value || 'शेखूपुर दड़ोली';
-    const userDistrict = loggedInDistrict || document.getElementById('regDistrict').value || 'हिसार';
-    const fullLocation = `${userVillage}, ${userDistrict}`;
-    const todayDate = new Date().toLocaleDateString('hi-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    if(!desc.trim()){
+    if (!desc.trim()) {
       alert("कृपया समस्या का विवरण लिखें!");
       return;
     }
-    if(!proofInput.files || proofInput.files.length === 0) {
+    if (!proofInput.files || proofInput.files.length === 0) {
       alert("⚠️ बिना सबूत (फोटो या वीडियो) के शिकायत दर्ज नहीं की जा सकती।");
       return;
     }
 
     const submitBtn = document.querySelector('.modal .submit-btn');
     const originalBtnText = submitBtn.innerText;
-    
     submitBtn.innerText = "⏳ शिकायत सर्वर पर जा रही है...";
     submitBtn.disabled = true;
     submitBtn.style.background = "#A8402E";
@@ -1815,78 +1880,28 @@ async function addComment() {
     formData.append('category', category);
     formData.append('desc', desc);
     formData.append('isAnonymous', isAnonymous);
-    formData.append('userId', loggedInUserId);
-    formData.append('citizenName', loggedInUserName);
-    formData.append('district', userDistrict);
-    formData.append('block', loggedInBlock || document.getElementById('regBlock').value || '');
-    formData.append('village', userVillage);
-    if (proofInput.files.length > 0) {
-      for (let i = 0; i < proofInput.files.length; i++) {
-        formData.append('images', proofInput.files[i]);
-      }
+    for (let i = 0; i < proofInput.files.length; i++) {
+      formData.append('images', proofInput.files[i]);
     }
 
     try {
-      const response = await fetch('https://mera-gaon-app.onrender.com/api/complaints/new', {
+      const response = await authFetch(`${API_BASE}/api/complaints/new`, {
         method: 'POST',
         body: formData
       });
+      const result = await response.json().catch(() => ({}));
 
-      const result = await response.json();
-
-      if(result.success) {
+      if (result.success) {
         alert("✅ " + result.message);
-        
-        const feed = document.getElementById('feed');
-        const newCard = document.createElement('div');
-        const newPostId = result.complaint._id; 
-        const localImageUrl = URL.createObjectURL(proofInput.files[0]);
-
-        newCard.className = `post-card`;
-        newCard.setAttribute('data-category', category);
-        newCard.setAttribute('onclick', 'openDetail(this)');
-        newCard.setAttribute('data-image', localImageUrl); 
-        newCard.setAttribute('data-id', newPostId);
-        // नए कार्ड में तारीख और लोकेशन सेव करना
-        newCard.setAttribute('data-date', todayDate);
-        newCard.setAttribute('data-location', fullLocation);
-        newCard.style.cursor = 'pointer';
-
-        newCard.innerHTML = `
-          <div class="post-head">
-            <span class="cat-tag">📌 ${category}</span>
-            <span class="status pending">पेंडिंग</span>
-          </div>
-          <div class="post-body">
-            <h3>${desc.substring(0, 30)}...</h3>
-            <div class="media-box" style="padding:0; overflow:hidden; border:1px solid #DED4B6;">
-              <img src="${localImageUrl}" style="width:100%; height:100%; object-fit:cover;">
-            </div>
-            <p>${desc}</p>
-          </div>
-          <div class="post-foot">
-            <span class="identity">${result.complaint.citizenName}</span>
-            <div class="actions">
-              <!-- समर्थन बटन खुद के लिए बंद (Disabled) -->
-              <button class="btn-sm support" disabled style="background:#e0e0e0; color:#888; border:none; cursor:not-allowed;">🤝 मेरी शिकायत</button>
-              <!-- ऑटोमैटिक अधिकारी को सूचित -->
-              <button class="btn-sm escalate sent" disabled style="background:#8a8a8a; border-color:#8a8a8a; color:white; cursor:not-allowed;">✓ अधिकारी को सूचित</button>
-            </div>
-          </div>
-        `;
-
-        feed.insertBefore(newCard, feed.firstChild);
-        postCommentsData[newPostId] = [];
-
         document.getElementById('issueDesc').value = '';
         proofInput.value = "";
         document.getElementById('uploadUI').innerText = "📎 सबूत अपलोड करने के लिए यहाँ दबाएं";
-        loadVillageStats();     
         closeModal();
+        loadComplaintsFromDB();
       } else {
-        alert("❌ सर्वर एरर: " + result.error);
+        alert("❌ सर्वर एरर: " + (result.error || "अज्ञात एरर"));
       }
-    } catch(err) {
+    } catch (err) {
       alert("❌ कनेक्शन एरर: सर्वर से नहीं जुड़ पा रहा है।");
       console.log(err);
     } finally {
@@ -1991,25 +2006,22 @@ function closeBaithak() {
 
 async function loadBaithakMessages() {
   try {
-    const res = await fetch(`${API_BASE}/api/chat?village=${encodeURIComponent(loggedInVillage)}`);
+    const res = await authFetch(`${API_BASE}/api/chat`);
     const messages = await res.json();
-    
+    if (!Array.isArray(messages)) return;
+
     const chatBody = document.getElementById('chatBody');
-    chatBody.innerHTML = '<div class="chat-date">आज</div>'; // क्लीयर करें
-    
-    messages.forEach(m => {
+    chatBody.innerHTML = '<div class="chat-date">आज</div>' + messages.map(m => {
       const isMe = m.senderId === loggedInUserId;
       const time = new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      
-      chatBody.innerHTML += `
+      return `
         <div class="msg ${isMe ? 'sent' : 'received'}">
-          ${!isMe ? `<div class="sender">${m.senderName}</div>` : ''}
-          <div class="text">${m.text}</div>
+          ${!isMe ? `<div class="sender">${esc(m.senderName)}</div>` : ''}
+          <div class="text">${esc(m.text)}</div>
           <div class="time">${time} ${isMe ? '<span style="color:#4FC3F7">✓</span>' : ''}</div>
-        </div>
-      `;
-    });
-    chatBody.scrollTop = chatBody.scrollHeight; // स्क्रॉल सबसे नीचे रखें
+        </div>`;
+    }).join('');
+    chatBody.scrollTop = chatBody.scrollHeight;
   } catch (err) {
     console.log("चैट लोड एरर:", err);
   }
@@ -2020,26 +2032,19 @@ async function sendChatMessage() {
   const text = input.value.trim();
   if (!text) return;
 
-  // तुरंत UI में दिखाएं (Fast UX)
   const chatBody = document.getElementById('chatBody');
   const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  chatBody.innerHTML += `<div class="msg sent"><div class="text">${text}</div><div class="time">${time} ⏳</div></div>`;
+  chatBody.innerHTML += `<div class="msg sent"><div class="text">${esc(text)}</div><div class="time">${time} ⏳</div></div>`;
   chatBody.scrollTop = chatBody.scrollHeight;
   input.value = '';
 
   try {
-    // बैकएंड में सेव करें
-    await fetch(`${API_BASE}/api/chat`, {
+    await authFetch(`${API_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        village: loggedInVillage, 
-        senderId: loggedInUserId, 
-        senderName: loggedInUserName, 
-        text: text 
-      })
+      body: JSON.stringify({ text })
     });
-    loadBaithakMessages(); // कन्फर्म होने पर फिर से लोड करें
+    loadBaithakMessages();
   } catch (err) {
     alert("मैसेज नहीं गया, इंटरनेट चेक करें!");
   }
@@ -2082,6 +2087,7 @@ function logout() {
   const confirmLogout = confirm("क्या आप सच में लॉगआउट करना चाहते हैं?");
   if (!confirmLogout) return;
 
+  authToken = '';
   // 2. यूज़र की पहचान (Variables) को खाली करें
   loggedInUserRole = "";
   loggedInUserName = "जागरूक नागरिक";
@@ -2173,7 +2179,7 @@ function logout() {
       }
       async function loadProfileComplaints() {
       try {
-        const res = await fetch(`${API_BASE}/api/my-complaints?userId=${encodeURIComponent(loggedInUserId)}`);
+        const res = await authFetch(`${API_BASE}/api/my-complaints`);
         const data = await res.json();
         const allComplaints = Array.isArray(data) ? data : [];
 
@@ -2194,7 +2200,7 @@ function logout() {
           activeList.forEach(c => {
             myContainer.innerHTML += `
               <div class="mini-post-card">
-                <div class="mini-title">${c.title || 'शिकायत'}</div>
+                <div class="mini-title">${esc(c.title || 'शिकायत')}</div>
                 <div class="mini-meta">स्थिति: <b>${c.status || 'पेंडिंग'}</b></div>
               </div>
             `;
@@ -2209,7 +2215,7 @@ function logout() {
           withdrawnList.forEach(c => {
             withdrawnContainer.innerHTML += `
               <div class="mini-post-card" style="border-left: 4px solid var(--red-flag); opacity: 0.85;">
-                <div class="mini-title">${c.title || 'शिकायत'} <span style="font-size:11px; color:var(--red-flag);">(वापस ली गई)</span></div>
+                <div class="mini-title">${esc(c.title|| 'शिकायत')} <span style="font-size:11px; color:var(--red-flag);">(वापस ली गई)</span></div>
                 <div class="mini-meta" style="margin-top: 4px; color: var(--ink);"><b>कारण:</b> ${c.withdrawalReason || 'कारण दर्ज नहीं है'}</div>
               </div>
             `;
@@ -2287,13 +2293,18 @@ function logout() {
     <!-- dynamic डेटा जावास्क्रिप्ट से यहाँ रेंडर होगा -->
   </div>
 </div>
-<div class="app" id="officialDashboard" style="display:none;">
   <header class="top">
-    <h1>अधिकारी डैशबोर्ड</h1>
-    <p id="officialSubtitle">आपके क्षेत्र की शिकायतें</p>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div>
+        <h1>अधिकारी डैशबोर्ड</h1>
+        <p id="officialSubtitle">आपके क्षेत्र की शिकायतें</p>
+      </div>
+      <div style="display:flex; gap:14px;">
+        <button onclick="loadOfficialComplaints()" style="background:none; border:none; color:white; font-size:22px; cursor:pointer;">🔄</button>
+        <button onclick="logout()" style="background:none; border:none; color:white; font-size:22px; cursor:pointer;">🚪</button>
+      </div>
+    </div>
   </header>
-  <div class="feed" id="officialFeed"></div>
-</div>
 
 <!-- कमिटमेंट देने वाला मॉडल -->
 <div id="commitModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">

@@ -74,6 +74,7 @@ ${mediaLinks || 'कोई फोटो नहीं'}
     if (ok) console.log(`✅ ईमेल भेज दी गई: ${official.email}`);
     return ok;
 }
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // एडमिन को अधिकारी वेरिफिकेशन मेल
 async function sendAdminVerificationEmail(user, approveUrl, rejectUrl) {
@@ -81,11 +82,11 @@ async function sendAdminVerificationEmail(user, approveUrl, rejectUrl) {
         to: process.env.ADMIN_EMAIL || process.env.MAIL_FROM,
         subject: `🆕 नया ${user.role} अकाउंट वेरिफिकेशन — ${user.village || user.district}`,
         html: `
-          <p><b>नाम:</b> ${user.name}</p>
-          <p><b>पद:</b> ${user.role}</p>
-          <p><b>फ़ोन:</b> ${user.phone}</p>
-          <p><b>जगह:</b> ${user.district}, ${user.block}, ${user.village}</p>
-          <p><b>ID/इलेक्शन सर्टिफिकेट:</b> <a href="${user.idProofUrl}">यहां देखें</a></p>
+          <p><b>नाम:</b> ${esc(user.name)}</p>
+          <p><b>पद:</b> ${esc(user.role)}</p>
+          <p><b>फ़ोन:</b> ${esc(user.phone)}</p>
+          <p><b>जगह:</b> ${esc(user.district)}, ${esc(user.block)}, ${esc(user.village)}</p>
+          <p><b>ID/इलेक्शन सर्टिफिकेट:</b> ${user.idProofUrl ? `<a href="${esc(user.idProofUrl)}">यहां देखें</a>` : 'अपलोड नहीं हुआ'}</p>
           <p>
             <a href="${approveUrl}" style="padding:10px 16px;background:#4C6444;color:white;text-decoration:none;border-radius:6px;">✅ अप्रूव करें</a>
             &nbsp;
