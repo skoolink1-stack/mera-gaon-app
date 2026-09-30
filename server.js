@@ -221,7 +221,7 @@ app.post('/api/auth/login', async (req, res) => {
 
         const safeUser = user.toObject();
         delete safeUser.password;
-        res.json({ success: true, message: 'लॉगिन सफल!', user: safeUser });
+        res.json({ success: true, message: 'लॉगिन सफल!', user: safeUser, token: makeToken(user) });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
