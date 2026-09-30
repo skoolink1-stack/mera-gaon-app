@@ -806,7 +806,10 @@
   let loggedInUserId = "";
   let loggedInBlock = "";
   let currentActiveCard = null;
-    let authToken = '';
+  let authToken = '';
+  let loggedInPhone = '';
+
+  const isVideo = u => /\/video\/upload\/|\.(mp4|mov|webm)(\?|$)/i.test(u || '');
 
   function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -942,7 +945,9 @@ function renderComplaints(complaints) {
       const first = mediaList[0].startsWith('http') ? mediaList[0] : `${API_BASE}${mediaList[0]}`;
       imgHtml = `
         <div class="media-box" style="padding:0; overflow:hidden; border:1px solid #DED4B6; position:relative; height:180px;">
-          <img src="${esc(first)}" style="width:100%; height:100%; object-fit:cover;">
+          ${isVideo(first)
+            ? `<video src="${esc(first)}" style="width:100%; height:100%; object-fit:cover;" muted playsinline preload="metadata"></video>`
+            : `<img src="${esc(first)}" style="width:100%; height:100%; object-fit:cover;">`}
           ${mediaList.length > 1 ? `<span style="position:absolute; right:8px; bottom:8px; background:rgba(0,0,0,0.7); color:white; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">+${mediaList.length - 1} फ़ोटो</span>` : ''}
         </div>`;
     }
@@ -1043,6 +1048,7 @@ function renderComplaints(complaints) {
 
       if(result.success) {
         authToken = result.token || '';
+        try { localStorage.setItem('mg_token', authToken); } catch (e) {}
         loggedInUserName = result.user.name;
         loggedInUserRole = result.user.role === 'citizen' ? '' : result.user.role;
         loggedInVillage = result.user.village;      
@@ -1175,6 +1181,7 @@ function renderComplaints(complaints) {
            return;
         }
         authToken = result.token || '';
+        try { localStorage.setItem('mg_token', authToken); } catch (e) {}
         loggedInUserName = result.user.name;
         loggedInVillage = result.user.village;
         loggedInDistrict = result.user.district;
@@ -1319,7 +1326,9 @@ async function toggleSupport(btn, complaintId) {
           <div id="mediaCarousel" onscroll="updateMediaCounter(this)" style="display:flex; overflow-x:auto; scroll-snap-type:x mandatory; background:#1A1A1A; height:240px; -webkit-overflow-scrolling:touch;">
             ${fullUrls.map(url => `
               <div style="min-width:100%; scroll-snap-align:center; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                <img src="${url}" onclick="openLightbox('${url}')" style="max-width:100%; max-height:100%; object-fit:contain; cursor:pointer;">
+                ${isVideo(url)
+                  ? `<video src="${url}" controls playsinline style="max-width:100%; max-height:100%;"></video>`
+                  : `<img src="${url}" onclick="openLightbox('${url}')" style="max-width:100%; max-height:100%; object-fit:contain; cursor:pointer;">`}
               </div>
             `).join('')}
           </div>
@@ -1910,12 +1919,45 @@ async function addComment() {
       submitBtn.style.background = "var(--neem)";
     }
   }
-
+    async function autoLogin() {
+    let t = '';
+    try { t = localStorage.getItem('mg_token') || ''; } catch (e) {}
+    if (!t) return;
+    authToken = t;
+    try {
+      const res = await authFetch(`${API_BASE}/api/auth/me`);
+      const r = await res.json().catch(() => ({}));
+      if (!res.ok || !r.user) {
+        if (res.status === 401) { try { localStorage.removeItem('mg_token'); } catch (e) {} }
+        authToken = '';
+        return;
+      }
+      const u = r.user;
+      loggedInUserName = u.name;
+      loggedInUserRole = u.role === 'citizen' ? '' : u.role;
+      loggedInVillage = u.village;
+      loggedInDistrict = u.district;
+      loggedInUserId = u._id;
+      loggedInBlock = u.block;
+      loggedInPhone = u.phone;
+      document.getElementById('loginScreen').style.display = 'none';
+      if (loggedInUserRole) {
+        document.getElementById('officialDashboard').style.display = 'block';
+        loadOfficialComplaints();
+      } else {
+        document.getElementById('mainApp').style.display = 'block';
+        document.getElementById('headerVillageName').innerText = u.village + ", " + u.district;
+        loadComplaintsFromDB();
+        checkVillageAdminPrompt();
+      }
+    } catch (e) { authToken = ''; }
+  }
 
   window.onload = function() {
     const distSelect = document.getElementById('regDistrict');
     for (let dist in haryanaFullData) {
       distSelect.add(new Option(dist, dist));
+      autoLogin();
     }
   };
 
@@ -2062,7 +2104,7 @@ async function sendChatMessage() {
       
       const regPhone = document.getElementById('regPhone');
       const loginPhone = document.getElementById('loginPhone');
-      document.getElementById('profPhone').value = (regPhone && regPhone.value) ? regPhone.value : (loginPhone && loginPhone.value ? loginPhone.value : "9876543210");
+      document.getElementById('profPhone').value = loggedInPhone || (loginPhone && loginPhone.value) || (regPhone && regPhone.value) || '';
       
       const regDist = document.getElementById('regDistrict');
       document.getElementById('profDist').value = (regDist && regDist.value) ? regDist.value : loggedInDistrict;
@@ -2088,6 +2130,7 @@ function logout() {
   if (!confirmLogout) return;
 
   authToken = '';
+  try { localStorage.removeItem('mg_token'); } catch (e) {}
   // 2. यूज़र की पहचान (Variables) को खाली करें
   loggedInUserRole = "";
   loggedInUserName = "जागरूक नागरिक";

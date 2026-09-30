@@ -20,7 +20,20 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.set('trust proxy', 1);
+
+app.get('/health', (req, res) => res.send('ok'));
 app.use(cors({ origin: ['https://mera-gaon-app.vercel.app', 'http://localhost:5500', 'http://127.0.0.1:5500'] }));
+const rateLimit = require('express-rate-limit');
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 40,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, error: 'बहुत ज़्यादा कोशिशें हुईं, 15 मिनट बाद दोबारा आएँ' }
+});
+app.use(['/api/auth/login', '/api/auth/send-otp', '/api/auth/register'], authLimiter);
 const jwt = require('jsonwebtoken');
 
 const LEVEL_OF_ROLE = { 'सरपंच': 1, 'BDO': 2, 'DC/SDM': 3 };
@@ -120,11 +133,12 @@ const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
         folder: 'MeraGaon',
-        allowedFormats: ['jpeg', 'png', 'jpg', 'mp4', 'pdf']
+        resource_type: 'auto',
+        allowed_formats: ['jpeg', 'png', 'jpg', 'webp', 'mp4', 'mov', 'pdf']
     }
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({ storage: storage, limits: { fileSize: 25 * 1024 * 1024 } });
 
 const mongoURI = process.env.MONGO_URI;
 
@@ -167,6 +181,18 @@ app.post('/api/auth/send-otp', async (req, res) => {
 app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
     try {
         const { name, phone, password, role, district, block, village, email, otp } = req.body;
+                if (!name || !name.trim() || !district || !block || !village) {
+            return res.status(400).json({ success: false, error: 'सभी जानकारी भरें' });
+        }
+        if (!/^\d{10}$/.test(phone || '')) {
+            return res.status(400).json({ success: false, error: 'सही 10 अंकों का फ़ोन नंबर डालें' });
+        }
+        if (!password || password.length < 6) {
+            return res.status(400).json({ success: false, error: 'पासवर्ड कम से कम 6 अक्षर का हो' });
+        }
+        if (['सरपंच', 'BDO', 'DC/SDM'].includes(role) && !req.file) {
+            return res.status(400).json({ success: false, error: 'अधिकारी के लिए ID प्रूफ ज़रूरी है' });
+        }
         if (!['', 'citizen', 'सरपंच', 'BDO', 'DC/SDM'].includes(role || '')) {
             return res.status(400).json({ success: false, error: 'गलत पद' });
         }
@@ -205,6 +231,12 @@ app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
         console.error("रजिस्ट्रेशन में एरर आया:", error);
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+app.get('/api/auth/me', auth, (req, res) => {
+    const u = req.user.toObject();
+    delete u.password;
+    res.json({ success: true, user: u });
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -796,20 +828,42 @@ app.post('/api/complaints/:id/support', auth, async (req, res) => {
     res.status(500).json({ error: "समर्थन अपडेट नहीं हो पाया" });
   }
 });
+const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
 app.get('/api/admin/verify-official/:id', async (req, res) => {
     try {
         const { action, secret } = req.query;
-        if (secret !== process.env.ADMIN_SECRET) return res.status(403).send('गलत लिंक');
+        if (!process.env.ADMIN_SECRET || secret !== process.env.ADMIN_SECRET) return res.status(403).send('गलत लिंक');
+        const user = await User.findById(req.params.id);
+        if (!user) return res.send('यूज़र नहीं मिला (शायद पहले ही अप्रूव/रिजेक्ट हो चुका है)');
+        const isApprove = action === 'approve';
+        res.send(`<!DOCTYPE html><html lang="hi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:sans-serif;text-align:center;padding:40px 20px;">
+<h2>${escHtml(user.name)} (${escHtml(user.role)})</h2>
+<p>${escHtml(user.district)}, ${escHtml(user.block)}, ${escHtml(user.village)}</p>
+<p>क्या आप इसे <b>${isApprove ? 'अप्रूव' : 'रिजेक्ट'}</b> करना चाहते हैं?</p>
+<form method="POST" action="/api/admin/verify-official/${escHtml(req.params.id)}">
+<input type="hidden" name="action" value="${isApprove ? 'approve' : 'reject'}">
+<input type="hidden" name="secret" value="${escHtml(secret)}">
+<button type="submit" style="padding:14px 28px;font-size:16px;border:none;border-radius:8px;color:white;background:${isApprove ? '#4C6444' : '#A8402E'};">हाँ, ${isApprove ? 'अप्रूव' : 'रिजेक्ट'} करें</button>
+</form></body></html>`);
+    } catch (error) { res.status(500).send('एरर: ' + error.message); }
+});
+
+app.post('/api/admin/verify-official/:id', async (req, res) => {
+    try {
+        const { action, secret } = req.body;
+        if (!process.env.ADMIN_SECRET || secret !== process.env.ADMIN_SECRET) return res.status(403).send('गलत लिंक');
         const user = await User.findById(req.params.id);
         if (!user) return res.send('यूज़र नहीं मिला');
         if (action === 'approve') {
             user.isVerified = true;
             await user.save();
-            return res.send(`<h2>✅ ${user.name} को ${user.role} के तौर पर अप्रूव कर दिया गया।</h2>`);
-        } else {
-            await User.findByIdAndDelete(req.params.id);
-            return res.send(`<h2>❌ ${user.name} का अकाउंट रिजेक्ट कर दिया गया।</h2>`);
+            return res.send(`<h2 style="font-family:sans-serif;text-align:center;">✅ ${escHtml(user.name)} को ${escHtml(user.role)} के तौर पर अप्रूव कर दिया गया।</h2>`);
         }
+        if (user.isVerified) return res.send('यह अकाउंट पहले से अप्रूव है, रिजेक्ट नहीं किया जा सकता');
+        await User.findByIdAndDelete(req.params.id);
+        return res.send(`<h2 style="font-family:sans-serif;text-align:center;">❌ ${escHtml(user.name)} का अकाउंट रिजेक्ट कर दिया गया।</h2>`);
     } catch (error) { res.status(500).send('एरर: ' + error.message); }
 });
 
