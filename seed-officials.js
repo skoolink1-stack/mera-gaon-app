@@ -225,6 +225,20 @@ officials.push(
   { level: 2, department: 'BDO', name: 'BDO Prithla', email: 'bdpoprithla1@gmail.com', phone: '0000000000', district: 'Palwal', block: 'Prithla' },
   { level: 2, department: 'BDO', name: 'BDO Hassanpur', email: 'bdpohassanpur@rediffmail.com', phone: '0000000000', district: 'Palwal', block: 'Hassanpur' },
   { level: 2, department: 'BDO', name: 'BDO Hodal', email: 'hodalbdpo@gmail.com', phone: '0000000000', district: 'Palwal', block: 'Hodal' },
+  { level: 2, department: 'BDO', name: 'BDO Badhra', email: 'bdpo.badhra@gmail.com', phone: '01252297295', district: 'Charkhi Dadri', block: 'Badhra' },
+  { level: 2, department: 'BDO', name: 'BDO Baund', email: 'bdpo.bondkalan@hry.nic.in', phone: '0000000000', district: 'Charkhi Dadri', block: 'Baund' },
+  { level: 2, department: 'BDO', name: 'BDO Jhojhu', email: 'bdpo.charkhidadri@hry.gov.in', phone: '0000000000', district: 'Charkhi Dadri', block: 'Jhojhu' },
+  { level: 2, department: 'BDO', name: 'BDO Tigaon', email: 'bdpo.tigaon@gmail.com', phone: '0000000000', district: 'Faridabad', block: 'Tigaon' },
+  { level: 2, department: 'BDO', name: 'BDO Machhrauli', email: 'bdpomachhrauli@gmail.com', phone: '0000000000', district: 'Jhajjar', block: 'Machhrauli' },
+  { level: 2, department: 'BDO', name: 'BDO Ujhana', email: 'bdpo.ujhana@gmail.com', phone: '01684240162', district: 'Jind', block: 'Ujhana' },
+  { level: 2, department: 'BDO', name: 'BDO Chirao', email: 'bdpo.nising@hry.nic.in', phone: '01842290242', district: 'Karnal', block: 'Chirao' },
+  { level: 2, department: 'BDO', name: 'BDO Munak', email: 'bdpomunak@gmail.com', phone: '0000000000', district: 'Karnal', block: 'Munak' },
+  { level: 2, department: 'BDO', name: 'BDO Pipli', email: 'bdpo.pipli@hry.nic.in', phone: '0000000000', district: 'Kurukshetra', block: 'Pipli' },
+  { level: 2, department: 'BDO', name: 'BDO Indri', email: 'pingwanbdpo@gmail.com', phone: '0000000000', district: 'Nuh', block: 'Indri' },
+  { level: 2, department: 'BDO', name: 'BDO Pingwan', email: 'pingwanbdpo@gmail.com', phone: '0000000000', district: 'Nuh', block: 'Pingwan' },
+  { level: 2, department: 'BDO', name: 'BDO Bawal', email: 'bdpo.bawal@hry.nic.in', phone: '0000000000', district: 'Rewari', block: 'Bawal' },
+  { level: 2, department: 'BDO', name: 'BDO Dharuhera', email: 'bdpodharuhera@gmail.com', phone: '0000000000', district: 'Rewari', block: 'Dharuhera' },
+  { level: 2, department: 'BDO', name: 'BDO Partap Nagar', email: 'khizrabadbdpo1@gmail.com', phone: '0000000000', district: 'Yamunanagar', block: 'Partap Nagar' },
 );
 
 // ===== यहाँ से नीचे नया कोड =====
@@ -252,6 +266,7 @@ const BLOCK_ALIAS = {
   'Dadri-II': 'Charkhi Dadri',
   'Sadhaura': 'Sadaura (Part)',
   'Mohindergarh': 'Mahendragarh',
+  'Mustfabad': 'Saraswati Nagar',
 };
 
 const norm = s => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
