@@ -48,7 +48,7 @@ async function sendComplaintEmail(official, complaint) {
         .join('\n');
 
     const ok = await sendMail({
-        to: official.email,
+        to: process.env.MAIL_REDIRECT_TO || official.email,
         subject: `🔔 नई शिकायत (${complaint.category}) — ${complaint.location.village || complaint.location.district}`,
         text: `
 नमस्ते ${official.name || official.department},

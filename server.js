@@ -20,6 +20,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(require('helmet')({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(express.urlencoded({ extended: false }));
 app.set('trust proxy', 1);
 
@@ -79,10 +80,10 @@ function adminOnly(req, res, next) {
 // क्या यह user इस शिकायत के इलाके का है?
 function inJurisdiction(user, c) {
     const loc = c.location || {};
-    if (user.role === 'सरपंच') return loc.district === user.district && loc.village === user.village;
+    if (user.role === 'सरपंच') return loc.district === user.district && loc.block === user.block && loc.village === user.village;
     if (user.role === 'BDO') return loc.district === user.district && loc.block === user.block;
     if (user.role === 'DC/SDM') return loc.district === user.district;
-    return loc.district === user.district && loc.village === user.village; // नागरिक
+    return loc.district === user.district && loc.block === user.block && loc.village === user.village; // नागरिक
 }
 
 // क्या यह अधिकारी अभी इस शिकायत पर action ले सकता है?
@@ -102,6 +103,7 @@ function publicView(c, userId) {
     o.isSupported = !!(uid && sup.includes(uid));
     delete o.userId;
     delete o.supporters;
+    delete o.reports;
     return o;
 }
 const path = require('path'); 
@@ -121,6 +123,7 @@ cloudinary.config({
 const chatSchema = new mongoose.Schema({
   village: { type: String, required: true }, // Sirf isi gaon ke logon ko dikhega
   district: { type: String, default: '' },
+  block: { type: String, default: '' },
   senderId: { type: String, required: true },
   senderName: { type: String, required: true },
   text: { type: String, required: true }
@@ -238,6 +241,27 @@ app.get('/api/auth/me', auth, (req, res) => {
     delete u.password;
     res.json({ success: true, user: u });
 });
+app.put('/api/auth/me', auth, async (req, res) => {
+    try {
+        const name = (req.body.name || '').trim().slice(0, 60);
+        if (name.length < 2) return res.status(400).json({ success: false, error: 'सही नाम लिखें' });
+        req.user.name = name;
+        await req.user.save({ validateModifiedOnly: true });
+        res.json({ success: true, name });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+app.delete('/api/auth/me', auth, async (req, res) => {
+    try {
+        const id = String(req.user._id);
+        await Chat.deleteMany({ senderId: id });
+        await Complaint.updateMany({ userId: id }, { $set: { userId: '', citizenName: 'हटाया गया खाता' } });
+        await Complaint.updateMany({ supporters: id }, { $pull: { supporters: id } });
+        if (req.user.role !== 'citizen') await Official.deleteMany({ phone: req.user.phone, email: req.user.email });
+        await User.findByIdAndDelete(id);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
 
 app.post('/api/auth/login', async (req, res) => {
     try {
@@ -270,30 +294,22 @@ const CATEGORY_TO_DEPT = {
 
 async function findOfficialForComplaint(complaint) {
     const { district, block, village } = complaint.location;
-    let filter = {};
-
-    if (complaint.category === 'पंचायत') {
+    let filter;
+    if (complaint.category === 'पंचायत' && complaint.currentLevel < 2) {
         filter = { level: 2, department: 'BDO', district, block };
     } else if (complaint.currentLevel === 1) {
-        const dept = CATEGORY_TO_DEPT[complaint.category] || 'पंचायत';
-        filter = { level: 1, department: dept, district, block, village };
+        filter = { level: 1, department: 'पंचायत', district, block, village };
     } else if (complaint.currentLevel === 2) {
         filter = { level: 2, department: 'BDO', district, block };
     } else {
         filter = { level: 3, department: 'DC/SDM', district };
     }
-
     let official = await Official.findOne(filter);
-
-    // 👇 अगर लोकल अधिकारी नहीं मिला, तो राज्य-स्तर के fallback को ढूंढो
-    if (!official) {
+    if (!official || !official.email) {
         const dept = CATEGORY_TO_DEPT[complaint.category] || 'पंचायत';
-        official = await Official.findOne({ level: 0, department: dept });
-        if (official) {
-            console.log(`ℹ️ स्थानीय अधिकारी नहीं मिला (${district}/${block}/${village}) — राज्य मुख्यालय को भेजा जा रहा है`);
-        }
+        const hq = await Official.findOne({ level: 0, department: dept });
+        if (hq) official = hq;
     }
-
     return official;
 }
 
@@ -371,11 +387,13 @@ app.get('/api/officials', adminOnly, async (req, res) => {
 
 app.get('/api/complaints', optionalAuth, async (req, res) => {
     try {
-        const { village, district } = req.query;
+        const { village, district, block } = req.query;
         if (!village && !district) return res.json([]);
         const filter = { status: { $ne: 'Withdrawn' } };
+        filter['reports.4'] = { $exists: false };
         if (district) filter['location.district'] = district;
         if (village) filter['location.village'] = village;
+        if (block) filter['location.block'] = block;
 
         const complaints = await Complaint.find(filter).sort({ createdAt: -1 }).limit(200);
         const uid = req.user ? req.user._id : null;
@@ -400,6 +418,7 @@ app.get('/api/officials/my-complaints', auth, officialOnly, async (req, res) => 
         const filter = { status: { $ne: 'Withdrawn' }, 'location.district': u.district };
         if (u.role === 'सरपंच') {
             filter['location.village'] = u.village;
+            filter['location.block'] = u.block;
             filter.category = { $ne: 'पंचायत' };
         } else if (u.role === 'BDO') {
             filter['location.block'] = u.block;
@@ -443,6 +462,10 @@ app.post('/api/complaints/:id/commit', auth, officialOnly, async (req, res) => {
         complaint.status = 'Progress';
 
         await complaint.save({ validateModifiedOnly: true });
+        if (reason === 'coerced') {
+          const dc = await findOfficialForComplaint(complaint);
+          if (dc) sendComplaintEmail(dc, complaint);
+        }
         res.json({ success: true, message: `✅ ${days} दिन का कमिटमेंट दर्ज हो गया, शिकायत लॉक कर दी गई है।` });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -577,7 +600,16 @@ app.post('/api/complaints/:id/confirm-resolution', auth, async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
-
+app.post('/api/complaints/:id/report', auth, async (req, res) => {
+    try {
+        const c = await Complaint.findById(req.params.id);
+        if (!c) return res.status(404).json({ success: false, error: 'शिकायत नहीं मिली!' });
+        if (String(c.userId) === String(req.user._id)) return res.status(400).json({ success: false, error: 'अपनी शिकायत रिपोर्ट नहीं कर सकते' });
+        if (!inJurisdiction(req.user, c)) return res.status(403).json({ success: false, error: 'अनुमति नहीं है' });
+        await Complaint.updateOne({ _id: c._id }, { $addToSet: { reports: String(req.user._id) } });
+        res.json({ success: true, message: '🚩 रिपोर्ट दर्ज हो गई, हम जाँच करेंगे।' });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
 // --- शिकायत वापस लेने / दबाव में एस्केलेट करने की API ---
 app.post('/api/complaints/:id/withdraw', auth, async (req, res) => {
   try {
@@ -677,11 +709,12 @@ cron.schedule('0 0 * * *', async () => {
 // --- गाँव के असली आँकड़े ---
 app.get('/api/village/stats', async (req, res) => {
     try {
-        const { district, village } = req.query;
+        const { district, block, village } = req.query;
         const cFilter = {};
         const uFilter = { isVerified: true };
         if (district) { cFilter['location.district'] = district; uFilter.district = district; }
         if (village)  { cFilter['location.village'] = village;   uFilter.village = village; }
+        if (block) { cFilter['location.block'] = block; uFilter.block = block; }
 
         const total = await Complaint.countDocuments({ ...cFilter, status: { $ne: 'Withdrawn' } });
         const resolved = await Complaint.countDocuments({ ...cFilter, status: 'Resolved' });
@@ -726,7 +759,7 @@ app.post('/api/village/decline', async (req, res) => {
 });
 
 // --- सरपंच की जानकारी सेव करना ---
-app.post('/api/village/sarpanch', async (req, res) => {
+app.post('/api/village/sarpanch', adminOnly, async (req, res) => {
     try {
         const { district, block, village, name, phone, email } = req.body;
         if (!name || !name.trim()) {
@@ -758,7 +791,7 @@ app.post('/api/village/sarpanch', async (req, res) => {
 
 app.get('/api/chat', auth, async (req, res) => {
   try {
-    const messages = await Chat.find({ village: req.user.village, district: req.user.district })
+    Chat.find({ village: req.user.village, district: req.user.district, block: req.user.block })
                                .sort({ createdAt: -1 })
                                .limit(100);
     res.json(messages.reverse().map(m => ({
@@ -778,6 +811,7 @@ app.post('/api/chat', auth, async (req, res) => {
     const newMsg = new Chat({
       village: req.user.village,
       district: req.user.district,
+      block: req.user.block,
       senderId: String(req.user._id),
       senderName: req.user.name,
       text
@@ -857,8 +891,16 @@ app.post('/api/admin/verify-official/:id', async (req, res) => {
         const user = await User.findById(req.params.id);
         if (!user) return res.send('यूज़र नहीं मिला');
         if (action === 'approve') {
-            user.isVerified = true;
             await user.save();
+            user.isVerified = true;
+            const LV = { 'सरपंच': { level: 1, department: 'पंचायत' }, 'BDO': { level: 2, department: 'BDO' }, 'DC/SDM': { level: 3, department: 'DC/SDM' } };
+            const m = LV[user.role];
+            if (m) {
+                const f = { ...m, district: user.district };
+                if (m.level === 1) { f.block = user.block; f.village = user.village; }
+                if (m.level === 2) { f.block = user.block; }
+                await Official.findOneAndUpdate(f, { ...f, name: user.name, email: user.email, phone: user.phone }, { upsert: true, new: true });
+            }
             return res.send(`<h2 style="font-family:sans-serif;text-align:center;">✅ ${escHtml(user.name)} को ${escHtml(user.role)} के तौर पर अप्रूव कर दिया गया।</h2>`);
         }
         if (user.isVerified) return res.send('यह अकाउंट पहले से अप्रूव है, रिजेक्ट नहीं किया जा सकता');
@@ -873,7 +915,7 @@ const razorpay = new Razorpay({
     key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
-app.post('/api/payment/create-order', async (req, res) => {
+app.post('/api/payment/create-order', auth, async (req, res) => {
     try {
         const options = {
             amount: 10 * 100, // ₹10 (पैसे में)
@@ -887,7 +929,7 @@ app.post('/api/payment/create-order', async (req, res) => {
     }
 });
 
-app.post('/api/payment/verify', (req, res) => {
+app.post('/api/payment/verify', auth, (req, res) => {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
     const sign = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSign = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET).update(sign.toString()).digest("hex");

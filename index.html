@@ -5,6 +5,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MERA GAON</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#33452F">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+Devanagari:wght@500;700&family=Hind:wght@400;500;600;700&display=swap');
   :root{
@@ -652,6 +656,7 @@
     <div class="menu-item" onclick="openProfile()">👤 मेरी प्रोफ़ाइल</div>
     <div class="menu-item" onclick="openBaithak()">💬 गाँव की बैठक (Chat)</div>
     <div class="menu-item" onclick="openSchemes()">📰 आम जानकारी और योजनाएं</div>
+    <div class="menu-item" onclick="deleteAccount()" style="color: var(--red-flag);">🗑️ अकाउंट हटाएँ</div>
     <div class="menu-item" onclick="logout()" style="color: var(--red-flag); border-top: 2px solid var(--paper-line); margin-top: auto;">🚪 लॉगआउट (Logout)</div>
   </div>
 
@@ -831,7 +836,7 @@
   }
 
   async function startPayment() {
-      const res = await fetch(`${API_BASE}/api/payment/create-order`, { method: 'POST' });
+      const res = await authFetch(`${API_BASE}/api/payment/create-order`, { method: 'POST' });
       const data = await res.json();
 
       if (!data.success) return alert("पेमेंट सिस्टम में दिक्कत है!");
@@ -844,7 +849,7 @@
           "description": "मासिक सब्सक्रिप्शन",
           "order_id": data.order.id,
           "handler": async function (response) {
-              const verifyRes = await fetch(`${API_BASE}/api/payment/verify`, {
+              const verifyRes = await authFetch(`${API_BASE}/api/payment/verify`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(response)
@@ -920,7 +925,7 @@ async function confirmWithdraw(id) {
 async function loadComplaintsFromDB() {
   loadVillageStats();
   try {
-    const res = await authFetch(`${API_BASE}/api/complaints?village=${encodeURIComponent(loggedInVillage)}&district=${encodeURIComponent(loggedInDistrict)}`);
+    const res = await authFetch(`${API_BASE}/api/complaints?village=${encodeURIComponent(loggedInVillage)}&district=${encodeURIComponent(loggedInDistrict)}&block=${encodeURIComponent(loggedInBlock)}`);
     const data = await res.json();
     const list = Array.isArray(data) ? data : [];
     renderComplaints(list.filter(c => c && c.status !== 'Withdrawn'));
@@ -1388,6 +1393,10 @@ async function toggleSupport(btn, complaintId) {
             💬 शिकायत की चर्चा (कमेंट देखें)
           </button>
 
+          <button onclick="reportComplaint('${c._id || ''}')" style="width:100%; margin-bottom:15px; padding:10px; background:transparent; border:1.5px solid var(--paper-line); border-radius:8px; color:var(--ink-soft); font-weight:bold; cursor:pointer;">
+            🚩 गलत/आपत्तिजनक रिपोर्ट करें
+          </button>
+
           <!-- 🗑️ वापस लेने का बटन -->
           <div>
             <button onclick="withdrawComplaint('${c._id || ''}')" 
@@ -1582,7 +1591,7 @@ let sarpanchFormSource = 'prompt';
 
 async function loadVillageStats() {
   try {
-    const params = new URLSearchParams({ district: loggedInDistrict, village: loggedInVillage });
+    const params = new URLSearchParams({ district: loggedInDistrict, block: loggedInBlock || '', village: loggedInVillage });
     const res = await fetch(`${API_BASE}/api/village/stats?${params}`);
     const s = await res.json();
     document.getElementById('totalComplaints').innerText = s.total;
@@ -1594,6 +1603,7 @@ async function loadVillageStats() {
 }
 
 async function checkVillageAdminPrompt() {
+  return;
   if (loggedInUserRole) return;   // अधिकारियों को popup नहीं दिखाना
   try {
     const params = new URLSearchParams({
@@ -2157,27 +2167,61 @@ function logout() {
   if(loginPwd) loginPwd.value = '';
 }
 
-  function toggleEditProfile() {
+    async function toggleEditProfile() {
     const btn = document.getElementById('editProfileBtn');
-    const inputs = document.querySelectorAll('.profile-card input');
-    
-    if(btn.innerText.includes("सुधारें")) {
-      inputs.forEach(i => i.removeAttribute('readonly')); 
-      inputs[0].focus(); 
-      
+    const nameInput = document.getElementById('profName');
+
+    if (btn.innerText.includes("सुधारें")) {
+      nameInput.value = loggedInUserName;
+      nameInput.removeAttribute('readonly');
+      nameInput.focus();
       btn.innerHTML = "💾 सेव करें";
       btn.style.background = "var(--neem)";
       btn.style.color = "white";
-    } 
-    else {
-      inputs.forEach(i => i.setAttribute('readonly', 'true')); 
-      
-      btn.innerHTML = "✏️ सुधारें";
-      btn.style.background = "var(--paper-line)";
-      btn.style.color = "var(--ink)";
-      
-      alert("✅ आपकी व्यक्तिगत जानकारी सफलतापूर्वक अपडेट हो गई है!");
+      return;
     }
+
+    const newName = nameInput.value.trim();
+    if (newName.length < 2) { alert('⚠️ सही नाम लिखें'); return; }
+    try {
+      const res = await authFetch(`${API_BASE}/api/auth/me`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { alert('❌ ' + (data.error || 'एरर आया')); return; }
+      loggedInUserName = data.name;
+    } catch (e) { alert('सर्वर से कनेक्ट नहीं हो पा रहा है।'); return; }
+
+    nameInput.setAttribute('readonly', 'true');
+    nameInput.value = loggedInUserRole ? `${loggedInUserName} (${loggedInUserRole})` : loggedInUserName;
+    btn.innerHTML = "✏️ सुधारें";
+    btn.style.background = "var(--paper-line)";
+    btn.style.color = "var(--ink)";
+    alert("✅ नाम अपडेट हो गया");
+  }
+
+  async function deleteAccount() {
+    if (!confirm('⚠️ आपका अकाउंट और चैट हमेशा के लिए हट जाएँगे। क्या आप पक्का हटाना चाहते हैं?')) return;
+    if (!confirm('आख़िरी बार पूछ रहे हैं: अकाउंट हटाएँ?')) return;
+    try {
+      const res = await authFetch(`${API_BASE}/api/auth/me`, { method: 'DELETE' });
+      if (res.ok) {
+        try { localStorage.removeItem('mg_token'); } catch (e) {}
+        alert('अकाउंट हटा दिया गया।');
+        window.location.reload();
+      } else { alert('❌ अकाउंट नहीं हट पाया'); }
+    } catch (e) { alert('सर्वर से कनेक्ट नहीं हो पा रहा है।'); }
+  }
+
+  async function reportComplaint(id) {
+    if (!confirm('क्या आप इस शिकायत को गलत/आपत्तिजनक बताकर रिपोर्ट करना चाहते हैं?')) return;
+    try {
+      const res = await authFetch(`${API_BASE}/api/complaints/${id}/report`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      alert(data.message || data.error || 'एरर आया');
+    } catch (e) { alert('सर्वर से कनेक्ट नहीं हो पा रहा है।'); }
   }
   
   function openSchemes() {
@@ -2400,5 +2444,6 @@ function logout() {
     <button class="submit-btn" style="margin-top:10px;" onclick="submitSarpanchInfo()">सुरक्षित करें</button>
   </div>
 </div>
+<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});</script>
 </body>
 </html>

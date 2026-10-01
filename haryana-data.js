@@ -117,7 +117,7 @@ const haryanaFullData = {
       "Ugara",
       "Yaqubpur"
     ],
-    "Ambala-Ii": [
+    "Ambala-II": [
       "Barnala",
       "Bhilpura",
       "Brahman Majra",
@@ -1614,7 +1614,7 @@ const haryanaFullData = {
       "Tharva",
       "Umra"
     ],
-    "Hansi-Ii": [
+    "Hansi-II": [
       "Badala",
       "Badchapar",
       "Bass Ajamshapur",
@@ -1805,7 +1805,7 @@ const haryanaFullData = {
       "Talwandi Rana",
       "Talwandi Ruka"
     ],
-    "Hisar-Ii": [
+    "Hisar-II": [
       "Arya Nagar",
       "Balsamand",
       "Bandaheri",
