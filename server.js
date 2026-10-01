@@ -305,6 +305,9 @@ async function findOfficialForComplaint(complaint) {
         filter = { level: 3, department: 'DC/SDM', district };
     }
     let official = await Official.findOne(filter);
+    if (!official && filter.level === 2) {
+        official = await Official.findOne({ level: 3, department: 'DC/SDM', district });
+    }
     if (!official || !official.email) {
         const dept = CATEGORY_TO_DEPT[complaint.category] || 'पंचायत';
         const hq = await Official.findOne({ level: 0, department: dept });
