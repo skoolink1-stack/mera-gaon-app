@@ -913,6 +913,13 @@
     now.innerText = '⏳ कृपया रुकें...';
     try {
       const body = { plan: selectedPlan };
+      const vpaRaw = (document.getElementById('payVpa').value || '').trim();
+      if (vpaRaw && !/^[A-Za-z0-9._-]{2,}@[A-Za-z]{2,}$/.test(vpaRaw)) {
+        alert('⚠️ UPI ID सही नहीं लग रही, जैसे: name@ybl');
+        resetPayBtn();
+        return;
+      }
+      const vpa = vpaRaw;
       if (payMode === 'register') {
         body.email = document.getElementById('regEmail').value;
         body.phone = document.getElementById('regPhone').value;
@@ -930,7 +937,12 @@
         name: 'मेरा गाँव',
         description: selectedPlan === 'yearly' ? 'वार्षिक ऐप फीस' : 'मासिक ऐप फीस',
         order_id: data.order.id,
-        prefill: { contact: body.phone || '', email: body.email || '' },
+        prefill: Object.assign({ contact: body.phone || '', email: body.email || '', method: 'upi' }, vpa ? { vpa } : {}),
+        config: { display: {
+          blocks: { upi: { name: 'UPI से भुगतान', instruments: [{ method: 'upi' }] } },
+          sequence: ['block.upi'],
+          preferences: { show_default_blocks: false }
+        } },
         theme: { color: '#4C6444' },
         handler: async function (r) {
           try {
@@ -2469,9 +2481,14 @@ function logout() {
       <div><b>वार्षिक</b><div class="sv">₹20 की बचत</div><div style="font-size:12px; color:var(--ink-soft);">1 साल के लिए</div></div>
       <div class="pr">₹220</div>
     </div>
+    <div class="field" style="margin-top:6px;">
+      <label>अपनी UPI ID (वैकल्पिक)</label>
+      <input type="text" id="payVpa" placeholder="जैसे: 9876543210@ybl" autocapitalize="off" autocomplete="off">
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">खाली छोड़ेंगे तो अगली स्क्रीन पर PhonePe, GPay या Paytm चुन सकते हैं।</div>
+    </div>
 
     <button class="submit-btn" id="payNowBtn" onclick="startPayment()" style="margin-top:6px;">भुगतान करें</button>
-    <p style="font-size:12px; color:var(--ink-soft); text-align:center; margin:8px 0 18px;">UPI ID, UPI ऐप, QR या कार्ड से भुगतान। सुरक्षित भुगतान Razorpay से।</p>
+    <p style="font-size:12px; color:var(--ink-soft); text-align:center; margin:8px 0 18px;">सिर्फ़ UPI से भुगतान होगा। कोई कार्ड या बैंक की जानकारी नहीं माँगी जाएगी। सुरक्षित भुगतान Razorpay से।</p>
 
     <button class="submit-btn" id="payContinueBtn" onclick="payContinue()" disabled style="background:var(--haldi); color:var(--ink); opacity:.5;">OTP भेजें</button>
   </div>
