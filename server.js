@@ -13,7 +13,7 @@ const Complaint = require('./models/Complaint');
 const Official = require('./models/Official');
 const VillageInfo = require('./models/VillageInfo');
 const bcrypt = require('bcrypt');
-const { sendComplaintEmail, sendAdminVerificationEmail, sendOtpEmail } = require('./mailer');
+const { sendComplaintEmail, sendAdminVerificationEmail, sendOtpEmail, sendSubReminderEmail } = require('./mailer');
 const User = require('./models/User');
 
 const app = express();
@@ -34,7 +34,7 @@ const authLimiter = rateLimit({
     legacyHeaders: false,
     message: { success: false, error: 'बहुत ज़्यादा कोशिशें हुईं, 15 मिनट बाद दोबारा आएँ' }
 });
-app.use(['/api/auth/login', '/api/auth/send-otp', '/api/auth/register'], authLimiter);
+app.use(['/api/auth/login', '/api/auth/send-otp', '/api/auth/register', '/api/payment/create-order'], authLimiter);
 const jwt = require('jsonwebtoken');
 
 const LEVEL_OF_ROLE = { 'सरपंच': 1, 'BDO': 2, 'DC/SDM': 3 };
@@ -53,7 +53,44 @@ async function userFromReq(req) {
     } catch (e) { return null; }
 }
 
+const Payment = require('./models/Payment');
+const GRACE_DAYS = 2;
+const DAY_MS = 86400000;
+const PLANS = { monthly: { amount: 2000, label: '1 महीना' }, yearly: { amount: 22000, label: '1 साल' } };
+
+function addPlan(from, plan) {
+    const d = new Date(from);
+    if (plan === 'yearly') d.setFullYear(d.getFullYear() + 1);
+    else d.setMonth(d.getMonth() + 1);
+    return d;
+}
+
+function subInfo(u) {
+    if (u.role !== 'citizen') return { status: 'exempt' };
+    if (!u.subEnd) return { status: 'expired', daysLeft: 0, subEnd: null };
+    const now = Date.now(), end = new Date(u.subEnd).getTime();
+    if (now <= end) {
+        const daysLeft = Math.ceil((end - now) / DAY_MS);
+        return { status: daysLeft <= 2 ? 'soon' : 'active', daysLeft, subEnd: u.subEnd };
+    }
+    const graceEnd = end + GRACE_DAYS * DAY_MS;
+    if (now <= graceEnd) return { status: 'grace', daysLeft: Math.ceil((graceEnd - now) / DAY_MS), subEnd: u.subEnd };
+    return { status: 'expired', daysLeft: 0, subEnd: u.subEnd };
+}
+
+// ज़्यादातर routes: फीस खत्म तो 402
 async function auth(req, res, next) {
+    const u = await userFromReq(req);
+    if (!u) return res.status(401).json({ success: false, error: 'कृपया दोबारा लॉगिन करें' });
+    const s = subInfo(u);
+    if (s.status === 'expired') return res.status(402).json({ success: false, code: 'SUB_EXPIRED', error: 'ऐप फीस जमा करें' });
+    req.user = u;
+    req.sub = s;
+    next();
+}
+
+// सिर्फ़ लॉगिन चाहिए, फीस की जाँच नहीं (payment, profile, account delete के लिए)
+async function authAny(req, res, next) {
     const u = await userFromReq(req);
     if (!u) return res.status(401).json({ success: false, error: 'कृपया दोबारा लॉगिन करें' });
     req.user = u;
@@ -212,15 +249,28 @@ app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
 
         // अधिकारी है तो Verification पेंडिंग रहेगा (false)
         const isVerified = (role === 'citizen' || role === '') ? true : false;
+        const isCitizen = (role === 'citizen' || !role);
+        let paid = null;
+        if (isCitizen) {
+            try {
+                const d = jwt.verify(req.body.payToken || '', process.env.JWT_SECRET);
+                if (d.kind === 'pay') {
+                    paid = await Payment.findOneAndUpdate({ _id: d.pid, status: 'paid', claimed: false }, { claimed: true }, { new: true });
+                }
+            } catch (e) {}
+            if (!paid) return res.status(402).json({ success: false, error: 'पहले ऐप फीस जमा करें' });
+            req._claimedId = paid._id;
+        }
 
-                const newUser = new User({
+        const newUser = new User({
             name, phone, email, password: hashedPassword, role: role || 'citizen',
             district, block, village,
             idProofUrl: req.file ? req.file.path : '',
-            isVerified
+            isVerified, subEnd: paid ? addPlan(new Date(), paid.plan) : undefined,
         });
 
         await newUser.save();
+        if (paid) await Payment.updateOne({ _id: paid._id }, { userId: String(newUser._id) });
         if (!isVerified) {
             const approveUrl = `${process.env.BACKEND_URL}/api/admin/verify-official/${newUser._id}?action=approve&secret=${process.env.ADMIN_SECRET}`;
             const rejectUrl = `${process.env.BACKEND_URL}/api/admin/verify-official/${newUser._id}?action=reject&secret=${process.env.ADMIN_SECRET}`;
@@ -229,17 +279,18 @@ app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
 
         const safeUser = newUser.toObject();
         delete safeUser.password;
-        res.json({ success: true, message: 'अकाउंट बन गया!', user: safeUser, token: isVerified ? makeToken(newUser) : undefined });
+        res.json({ success: true, message: 'अकाउंट बन गया!', sub: subInfo(newUser),user: safeUser, token: isVerified ? makeToken(newUser) : undefined });
     } catch (error) {
         console.error("रजिस्ट्रेशन में एरर आया:", error);
+        if (req._claimedId) await Payment.updateOne({ _id: req._claimedId }, { claimed: false }).catch(() => {});
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-app.get('/api/auth/me', auth, (req, res) => {
+app.get('/api/auth/me', authAny, (req, res) => {
     const u = req.user.toObject();
     delete u.password;
-    res.json({ success: true, user: u });
+    res.json({ success: true, user: u, sub: subInfo(req.user) });
 });
 app.put('/api/auth/me', auth, async (req, res) => {
     try {
@@ -251,7 +302,7 @@ app.put('/api/auth/me', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-app.delete('/api/auth/me', auth, async (req, res) => {
+app.delete('/api/auth/me', authAny, async (req, res) => {
     try {
         const id = String(req.user._id);
         await Chat.deleteMany({ senderId: id });
@@ -277,7 +328,7 @@ app.post('/api/auth/login', async (req, res) => {
 
         const safeUser = user.toObject();
         delete safeUser.password;
-        res.json({ success: true, message: 'लॉगिन सफल!', user: safeUser, token: makeToken(user) });
+        res.json({ success: true, message: 'लॉगिन सफल!', user: safeUser, token: makeToken(user), sub: subInfo(user) });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -918,30 +969,60 @@ const razorpay = new Razorpay({
     key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
-app.post('/api/payment/create-order', auth, async (req, res) => {
+app.post('/api/payment/create-order', optionalAuth, async (req, res) => {
     try {
-        const options = {
-            amount: 10 * 100, // ₹10 (पैसे में)
-            currency: "INR",
-            receipt: "receipt_" + Math.random().toString(36).substring(7)
-        };
-        const order = await razorpay.orders.create(options);
-        res.json({ success: true, order });
+        const plan = PLANS[req.body.plan];
+        if (!plan) return res.status(400).json({ success: false, error: 'गलत प्लान' });
+        const uid = req.user ? String(req.user._id) : '';
+        const email = String(req.body.email || (req.user && req.user.email) || '').slice(0, 80);
+        const phone = String(req.body.phone || (req.user && req.user.phone) || '').slice(0, 15);
+
+        const order = await razorpay.orders.create({
+            amount: plan.amount, currency: 'INR',
+            receipt: 'mg_' + Date.now(),
+            notes: { plan: req.body.plan, userId: uid, email, phone }
+        });
+        await Payment.create({ orderId: order.id, plan: req.body.plan, amount: plan.amount, userId: uid, email, phone });
+        res.json({ success: true, order, keyId: process.env.RAZORPAY_KEY_ID });
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        console.error('create-order error:', error.message);
+        res.status(500).json({ success: false, error: 'पेमेंट शुरू नहीं हो पाया' });
     }
 });
 
-app.post('/api/payment/verify', auth, (req, res) => {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-    const sign = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSign = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET).update(sign.toString()).digest("hex");
+app.post('/api/payment/verify', optionalAuth, async (req, res) => {
+    try {
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+        if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+            return res.status(400).json({ success: false, error: 'अधूरी जानकारी' });
+        }
+        const expected = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+            .update(razorpay_order_id + '|' + razorpay_payment_id).digest('hex');
+        if (expected !== razorpay_signature) return res.status(400).json({ success: false, error: 'पेमेंट सत्यापित नहीं हुआ' });
 
-    if (razorpay_signature === expectedSign) {
-        // पेमेंट सक्सेस हो गई! (यहाँ आप यूजर के डेटाबेस में isPaid = true कर सकते हैं)
-        res.json({ success: true, message: "Payment Successful" });
-    } else {
-        res.status(400).json({ success: false, error: "Payment Failed / Fake" });
+        const p = await Payment.findOneAndUpdate(
+            { orderId: razorpay_order_id, status: 'created' },
+            { status: 'paid', paymentId: razorpay_payment_id, paidAt: new Date() },
+            { new: true }
+        );
+        if (!p) return res.status(400).json({ success: false, error: 'यह पेमेंट पहले ही दर्ज हो चुका है' });
+
+        if (p.userId) {   // renewal: नया प्लान पुराने के खत्म होने के बाद से शुरू
+            const u = await User.findById(p.userId);
+            const start = (u.subEnd && u.subEnd > new Date()) ? u.subEnd : new Date();
+            u.subEnd = addPlan(start, p.plan);
+            u.remind2 = false;
+            u.remind1 = false;
+            await u.save({ validateModifiedOnly: true });
+            await Payment.updateOne({ _id: p._id }, { claimed: true });
+            return res.json({ success: true, mode: 'renew', sub: subInfo(u) });
+        }
+
+        const payToken = jwt.sign({ pid: String(p._id), kind: 'pay' }, process.env.JWT_SECRET, { expiresIn: '3d' });
+        res.json({ success: true, mode: 'register', payToken });
+    } catch (error) {
+        console.error('verify error:', error.message);
+        res.status(500).json({ success: false, error: 'पेमेंट की पुष्टि नहीं हो पाई' });
     }
 });
 // Global Error Handler (Multer/Cloudinary के एरर पकड़ने के लिए)
@@ -949,6 +1030,16 @@ app.use((err, req, res, next) => {
     console.error("🔥 Server Crash Error:", err);
     res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
 });
+cron.schedule('0 9 * * *', async () => {
+    try {
+        const now = new Date();
+        const in1 = new Date(now.getTime() + DAY_MS), in2 = new Date(now.getTime() + 2 * DAY_MS);
+        const a = await User.find({ role: 'citizen', subEnd: { $gt: now, $lte: in2 }, remind2: { $ne: true } });
+        for (const u of a) { await sendSubReminderEmail(u, 2); u.remind2 = true; await u.save({ validateModifiedOnly: true }); }
+        const b = await User.find({ role: 'citizen', subEnd: { $gt: now, $lte: in1 }, remind1: { $ne: true } });
+        for (const u of b) { await sendSubReminderEmail(u, 1); u.remind1 = true; await u.save({ validateModifiedOnly: true }); }
+    } catch (e) { console.log('reminder error:', e.message); }
+}, { timezone: 'Asia/Kolkata' });
 
 app.listen(PORT, () => {
     console.log(`🚀 सर्वर http://localhost:${PORT} पर लाइव है`);

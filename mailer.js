@@ -97,5 +97,13 @@ async function sendAdminVerificationEmail(user, approveUrl, rejectUrl) {
     if (ok) console.log('✅ एडमिन वेरिफिकेशन मेल भेजी गई');
     return ok;
 }
+async function sendSubReminderEmail(user, daysLeft) {
+    if (!user.email) return false;
+    return sendMail({
+        to: user.email,
+        subject: `⏰ मेरा गाँव: आपकी ऐप फीस ${daysLeft} दिन में खत्म हो रही है`,
+        text: `नमस्ते ${user.name},\n\nआपका "मेरा गाँव" प्लान ${daysLeft} दिन में खत्म हो रहा है।\nऐप खोलकर ☰ मेनू → "ऐप फीस" से भुगतान कर दें। नया प्लान पुराने के खत्म होने के बाद से शुरू होगा।\n\n— मेरा गाँव`
+    });
+}
 
-module.exports = { sendOtpEmail, sendComplaintEmail, sendAdminVerificationEmail };
+module.exports = { sendOtpEmail, sendComplaintEmail, sendAdminVerificationEmail, sendSubReminderEmail };

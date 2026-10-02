@@ -11,7 +11,10 @@ const userSchema = new mongoose.Schema({
     village: String,
     idProofUrl: String, // आधार/आईडी की फोटो
     isVerified: { type: Boolean, default: true }, // नागरिक = true, अधिकारी = false (जब तक एडमिन अप्रूव न करे)
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+    subEnd: { type: Date },
+    remind2: { type: Boolean, default: false },
+    remind1: { type: Boolean, default: false }
 });
 
 module.exports = mongoose.model('User', userSchema);
