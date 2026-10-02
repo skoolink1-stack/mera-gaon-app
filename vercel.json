@@ -7,6 +7,9 @@
     { "src": "sw.js", "use": "@vercel/static" },
     { "src": "icon-*.png", "use": "@vercel/static" },
     { "src": "privacy.html", "use": "@vercel/static" },
+    { "src": "terms.html", "use": "@vercel/static" },
+    { "src": "refund.html", "use": "@vercel/static" },
+    { "src": "contact.html", "use": "@vercel/static" },
     { "src": "delete-account.html", "use": "@vercel/static" }
   ]
 }

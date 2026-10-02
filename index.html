@@ -679,7 +679,7 @@
       <button class="back-btn" onclick="closeBaithak()">←</button>
       <div style="display:flex; flex-direction:column;">
         <span style="font-size:18px; font-weight:bold;">गाँव की बैठक</span>
-        <span id="baithakMembers" style="font-size:12px; font-weight:normal; opacity:0.8;">0 लोग जुड़े हैं</span>>
+        <span id="baithakMembers" style="font-size:12px; font-weight:normal; opacity:0.8;">0 लोग जुड़े हैं</span>
       </div>
     </div>
     <div class="chat-body" id="chatBody">
@@ -2104,8 +2104,8 @@ async function addComment() {
     const distSelect = document.getElementById('regDistrict');
     for (let dist in haryanaFullData) {
       distSelect.add(new Option(dist, dist));
-      autoLogin();
     }
+    autoLogin();
   };
 
   function populateBlocks() {
