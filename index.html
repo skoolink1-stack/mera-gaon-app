@@ -833,6 +833,7 @@
 <script src="haryana-data.js"></script>
 <script>
   let loggedInUserRole = "";
+  let isOfficialTab = false;
   let loggedInUserName = "जागरूक नागरिक";
   let loggedInVillage = "";      
   let loggedInDistrict = "";
@@ -840,7 +841,7 @@
   let loggedInBlock = "";
   let currentActiveCard = null;
   let authToken = '';
-    let payMode = 'register', selectedPlan = 'monthly', subState = null, reminderShown = false;
+  let payMode = 'register', selectedPlan = 'monthly', subState = null, reminderShown = false;
   let payToken = '';
   try { payToken = localStorage.getItem('mg_paytoken') || ''; } catch (e) {}
 
@@ -1173,6 +1174,7 @@ function renderComplaints(complaints) {
   }
 
   function switchLoginType(type) {
+    isOfficialTab = (type === 'official');
     const tabCitizen = document.getElementById('tabCitizen');
     const tabOfficial = document.getElementById('tabOfficial');
     const officialFields = document.getElementById('officialFields');
@@ -1258,7 +1260,7 @@ function renderComplaints(complaints) {
   const block = document.getElementById('regBlock').value;
 
   const roleDropdown = document.getElementById('regRole');
-  const isOfficial = document.getElementById('officialFields').style.display === 'block';
+  const isOfficial = isOfficialTab;
   if (isOfficial) {
       loggedInUserRole = roleDropdown.options[roleDropdown.selectedIndex].value;
   } else {
@@ -2182,6 +2184,7 @@ async function addComment() {
   }
 
   window.onload = function() {
+    switchLoginType('citizen');
     const distSelect = document.getElementById('regDistrict');
     for (let dist in haryanaFullData) {
       distSelect.add(new Option(dist, dist));
