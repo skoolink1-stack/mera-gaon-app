@@ -1248,66 +1248,82 @@ function renderComplaints(complaints) {
   }
 
   async function sendOTP() {
-    const name = document.getElementById('regName').value;
-    const phone = document.getElementById('regPhone').value;
-    const email = document.getElementById('regEmail').value;
-    const village = document.getElementById('regVillage').value;
-    const pwd = document.getElementById('regPwd').value;
-    const pwdC = document.getElementById('regPwdConfirm').value;
-    const dist = document.getElementById('regDistrict').value;
-    const block = document.getElementById('regBlock').value;
+  const name = document.getElementById('regName').value;
+  const phone = document.getElementById('regPhone').value;
+  const email = document.getElementById('regEmail').value;
+  const village = document.getElementById('regVillage').value;
+  const pwd = document.getElementById('regPwd').value;
+  const pwdC = document.getElementById('regPwdConfirm').value;
+  const dist = document.getElementById('regDistrict').value;
+  const block = document.getElementById('regBlock').value;
 
-    const roleDropdown = document.getElementById('regRole');
-    const isOfficial = document.getElementById('officialFields').style.display === 'block';
-    if (isOfficial) {
-        loggedInUserRole = roleDropdown.options[roleDropdown.selectedIndex].value;
-    } else {
-        loggedInUserRole = "";
-    }
+  const roleDropdown = document.getElementById('regRole');
+  const isOfficial = document.getElementById('officialFields').style.display === 'block';
+  if (isOfficial) {
+      loggedInUserRole = roleDropdown.options[roleDropdown.selectedIndex].value;
+  } else {
+      loggedInUserRole = "";
+  }
 
-    if(!name || phone.length < 10 || !email || !village || !pwd || !dist || !block) {
-      alert("⚠️ कृपया सभी ज़रूरी जानकारी (*) भरें।");
-      return;
-    }
-    if (isOfficial && !document.getElementById('regIdProof').value) {
-      alert("⚠️ कृपया आईडी प्रूफ/इलेक्शन सर्टिफिकेट अपलोड करें।");
-      return;
-    }
-    if(pwd.length < 6) {
-      alert("⚠️ पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।");
-      return;
-    }
-    if(pwd !== pwdC) {
-      alert("❌ आपके दोनों पासवर्ड आपस में मेल नहीं खा रहे हैं!");
-      return;
-    }
-    if (!isOfficial && !payToken) { openPay('register'); return; }
+  if(!name || phone.length < 10 || !email || !village || !pwd || !dist || !block) {
+    alert("⚠️ कृपया सभी ज़रूरी जानकारी (*) भरें।");
+    return;
+  }
+  if (isOfficial && !document.getElementById('regIdProof').value) {
+    alert("⚠️ कृपया आईडी प्रूफ/इलेक्शन सर्टिफिकेट अपलोड करें।");
+    return;
+  }
+  if(pwd.length < 6) {
+    alert("⚠️ पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।");
+    return;
+  }
+  if(pwd !== pwdC) {
+    alert("❌ आपके दोनों पासवर्ड आपस में मेल नहीं खा रहे हैं!");
+    return;
+  }
+  if (!isOfficial && !payToken) { openPay('register'); return; }
 
-    loggedInUserName = name;
+  loggedInUserName = name;
+  if (isOfficial && !loggedInUserRole) {
+    alert("⚠️ कृपया अपना पद चुनें।");
+    return;
+  }
 
-    const btn = document.querySelector('#regForm .submit-btn');
-    btn.innerText = "⏳ OTP भेजा जा रहा है...";
-    btn.disabled = true;
+  const btn = document.querySelector('#regForm .submit-btn');
+  btn.innerText = "⏳ OTP भेजा जा रहा है...";
+  btn.disabled = true;
 
-    try {
-        const res = await fetch(`${API_BASE}/api/auth/send-otp`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (data.success) {
-            document.getElementById('regForm').style.display = 'none';
-            document.getElementById('otpSection').style.display = 'block';
-        } else {
-            alert("❌ " + (data.error || "OTP भेजने में समस्या आई"));
-        }
-    } catch (err) {
-        alert("❌ सर्वर से कनेक्ट नहीं हो पा रहा है।");
-    } finally {
-        btn.innerText = "सेव करें";
-        btn.disabled = false;
-    }
+  try {
+      const res = await fetch(`${API_BASE}/api/auth/send-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+      });
+
+      // 🔴 NAYA CODE: Agar token purana/galat ho toh payment page dobara kholo
+      if (res.status === 402) {
+          payToken = '';
+          try { localStorage.removeItem('mg_paytoken'); } catch (e) {}
+          btn.innerText = "सेव करें";
+          btn.disabled = false;
+          openPay('register');
+          alert("⚠️ पुराना भुगतान अमान्य हो गया है। कृपया ऐप फीस जमा करें।");
+          return;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      if (data.success) {
+          document.getElementById('regForm').style.display = 'none';
+          document.getElementById('otpSection').style.display = 'block';
+      } else {
+          alert("❌ " + (data.error || "OTP भेजने में समस्या आई"));
+      }
+  } catch (err) {
+      alert("❌ सर्वर से कनेक्ट नहीं हो पा रहा है।");
+  } finally {
+      btn.innerText = "सेव करें";
+      btn.disabled = false;
+  }
 }
 
   function cancelOTP() {
@@ -1369,6 +1385,14 @@ function renderComplaints(complaints) {
         checkVillageAdminPrompt();
         loadComplaintsFromDB();
       } else {
+        if (response.status === 402) {
+          payToken = '';
+          try { localStorage.removeItem('mg_paytoken'); } catch (e) {}
+          cancelOTP();
+          openPay('register');
+          alert("⚠️ भुगतान नहीं मिला, कृपया पहले फीस जमा करें।");
+          return;
+        }
         alert("❌ " + result.error);
       }
     } catch(err) {

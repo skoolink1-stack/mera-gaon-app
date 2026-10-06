@@ -258,7 +258,7 @@ app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
             try {
                 const d = jwt.verify(req.body.payToken || '', process.env.JWT_SECRET);
                 if (d.kind === 'pay') {
-                    paid = await Payment.findOneAndUpdate({ _id: d.pid, status: 'paid', claimed: false }, { claimed: true }, { new: true });
+                    paid = await Payment.findOneAndUpdate({ _id: d.pid, status: 'paid', claimed: false }, { claimed: true }, { returnDocument: 'after' });
                 }
             } catch (e) {}
             if (!paid) return res.status(402).json({ success: false, error: 'पहले ऐप फीस जमा करें' });
@@ -422,7 +422,7 @@ app.post('/api/officials', adminOnly, async (req, res) => {
         const official = await Official.findOneAndUpdate(
             filter,
             { level, department, name, email, phone, district, block, village, updatedAt: new Date() },
-            { new: true, upsert: true }
+            { returnDocument: 'after', upsert: true }
         );
 
         res.json({ success: true, message: 'अधिकारी की जानकारी सेव हो गई!', official });
@@ -519,10 +519,6 @@ app.post('/api/complaints/:id/commit', auth, officialOnly, async (req, res) => {
         complaint.status = 'Progress';
 
         await complaint.save({ validateModifiedOnly: true });
-        if (reason === 'coerced') {
-          const dc = await findOfficialForComplaint(complaint);
-          if (dc) sendComplaintEmail(dc, complaint);
-        }
         res.json({ success: true, message: `✅ ${days} दिन का कमिटमेंट दर्ज हो गया, शिकायत लॉक कर दी गई है।` });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -807,7 +803,7 @@ app.post('/api/village/decline', async (req, res) => {
         await VillageInfo.findOneAndUpdate(
             { district, block, village },
             { $addToSet: { declinedUsers: userId } },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
         );
         res.json({ success: true });
     } catch (error) {
@@ -848,7 +844,7 @@ app.post('/api/village/sarpanch', adminOnly, async (req, res) => {
 
 app.get('/api/chat', auth, async (req, res) => {
   try {
-    Chat.find({ village: req.user.village, district: req.user.district, block: req.user.block })
+    const messages = await Chat.find({ village: req.user.village, district: req.user.district, block: req.user.block })
                                .sort({ createdAt: -1 })
                                .limit(100);
     res.json(messages.reverse().map(m => ({
@@ -948,15 +944,15 @@ app.post('/api/admin/verify-official/:id', async (req, res) => {
         const user = await User.findById(req.params.id);
         if (!user) return res.send('यूज़र नहीं मिला');
         if (action === 'approve') {
-            await user.save();
             user.isVerified = true;
+            await user.save();
             const LV = { 'सरपंच': { level: 1, department: 'पंचायत' }, 'BDO': { level: 2, department: 'BDO' }, 'DC/SDM': { level: 3, department: 'DC/SDM' } };
             const m = LV[user.role];
             if (m) {
                 const f = { ...m, district: user.district };
                 if (m.level === 1) { f.block = user.block; f.village = user.village; }
                 if (m.level === 2) { f.block = user.block; }
-                await Official.findOneAndUpdate(f, { ...f, name: user.name, email: user.email, phone: user.phone }, { upsert: true, new: true });
+                await Official.findOneAndUpdate(f, { ...f, name: user.name, email: user.email, phone: user.phone }, { upsert: true, returnDocument: 'after' });
             }
             return res.send(`<h2 style="font-family:sans-serif;text-align:center;">✅ ${escHtml(user.name)} को ${escHtml(user.role)} के तौर पर अप्रूव कर दिया गया।</h2>`);
         }
@@ -1006,7 +1002,7 @@ app.post('/api/payment/verify', optionalAuth, async (req, res) => {
         const p = await Payment.findOneAndUpdate(
             { orderId: razorpay_order_id, status: 'created' },
             { status: 'paid', paymentId: razorpay_payment_id, paidAt: new Date() },
-            { new: true }
+            { returnDocument: 'after' }
         );
         if (!p) return res.status(400).json({ success: false, error: 'यह पेमेंट पहले ही दर्ज हो चुका है' });
 
