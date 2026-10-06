@@ -922,65 +922,81 @@
   }
 
   async function startPayment() {
-    const now = document.getElementById('payNowBtn');
-    now.disabled = true;
-    now.innerText = '⏳ कृपया रुकें...';
-    try {
-      const body = { plan: selectedPlan };
-      if (payMode === 'register') {
-        body.email = document.getElementById('regEmail').value;
-        body.phone = document.getElementById('regPhone').value;
-      }
-      const res = await authFetch(`${API_BASE}/api/payment/create-order`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!data.success) { alert('❌ ' + (data.error || 'पेमेंट शुरू नहीं हो पाया')); resetPayBtn(); return; }
-
-      const rzp = new Razorpay({
-        key: data.keyId,
-        amount: data.order.amount,
-        currency: 'INR',
-        name: 'मेरा गाँव',
-        description: selectedPlan === 'yearly' ? 'वार्षिक ऐप फीस' : 'मासिक ऐप फीस',
-        order_id: data.order.id,
-        prefill: Object.assign({ contact: body.phone || '', email: body.email || '', method: 'upi' }, vpa ? { vpa } : {}),
-        config: { display: {
-          blocks: { upi: { name: 'UPI से भुगतान', instruments: [{ method: 'upi' }] } },
-          sequence: ['block.upi'],
-          preferences: { show_default_blocks: false }
-        } },
-        theme: { color: '#4C6444' },
-        handler: async function (r) {
-          try {
-            const v = await authFetch(`${API_BASE}/api/payment/verify`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r)
-            });
-            const vd = await v.json().catch(() => ({}));
-            if (!vd.success) {
-              alert('❌ ' + (vd.error || 'पुष्टि नहीं हो पाई') + '\nअगर पैसे कट गए हैं तो सपोर्ट को ईमेल करें, पेमेंट ID: ' + r.razorpay_payment_id);
-              resetPayBtn(); return;
-            }
-            if (vd.mode === 'register') {
-              payToken = vd.payToken;
-              try { localStorage.setItem('mg_paytoken', payToken); } catch (e) {}
-              openPay('register');
-            } else {
-              subState = vd.sub; reminderShown = false; updateDot();
-              closePay();
-              alert('✅ भुगतान सफल! आपका नया प्लान ' + fmtDate(vd.sub.subEnd) + ' तक चालू है।');
-            }
-          } catch (e) { alert('सर्वर से कनेक्ट नहीं हो पा रहा है। पेमेंट ID: ' + r.razorpay_payment_id); resetPayBtn(); }
-        },
-        modal: { ondismiss: resetPayBtn }
-      });
-      rzp.on('payment.failed', function () { alert('❌ भुगतान नहीं हो पाया, दोबारा कोशिश करें।'); resetPayBtn(); });
-      rzp.open();
-    } catch (e) {
-      alert('सर्वर से कनेक्ट नहीं हो पा रहा है।');
-      resetPayBtn();
+  const now = document.getElementById('payNowBtn');
+  now.disabled = true;
+  now.innerText = '⏳ कृपया रुकें...';
+  
+  try {
+    const body = { plan: selectedPlan };
+    if (payMode === 'register') {
+      body.email = document.getElementById('regEmail').value;
+      body.phone = document.getElementById('regPhone').value;
     }
+    
+    console.log("API Call Jaa Rahi Hai:", `${API_BASE}/api/payment/create-order`);
+    
+    const res = await authFetch(`${API_BASE}/api/payment/create-order`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    
+    const data = await res.json().catch((err) => {
+      console.error("JSON Error:", err);
+      return { success: false, error: "Backend se galat format me data aaya" };
+    });
+
+    console.log("Server Ka Jawab:", data);
+    
+    if (!data.success) { 
+      // YE LINE BACKEND KA ERROR DIKHAYEGI
+      alert('❌ Backend Error: ' + (data.error || 'पेमेंट शुरू नहीं हो पाया')); 
+      resetPayBtn(); 
+      return; 
+    }
+
+    const rzp = new Razorpay({
+      key: data.keyId,
+      amount: data.order.amount,
+      currency: 'INR',
+      name: 'मेरा गाँव',
+      description: selectedPlan === 'yearly' ? 'वार्षिक ऐप फीस' : 'मासिक ऐप फीस',
+      order_id: data.order.id,
+      prefill: { contact: body.phone || '', email: body.email || '' },
+      theme: { color: '#4C6444' },
+      handler: async function (r) {
+        try {
+          const v = await authFetch(`${API_BASE}/api/payment/verify`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r)
+          });
+          const vd = await v.json().catch(() => ({}));
+          if (!vd.success) {
+            alert('❌ Verify Error: ' + (vd.error || 'पुष्टि नहीं हो पाई'));
+            resetPayBtn(); return;
+          }
+          if (vd.mode === 'register') {
+            payToken = vd.payToken;
+            try { localStorage.setItem('mg_paytoken', payToken); } catch (e) {}
+            openPay('register');
+          } else {
+            subState = vd.sub; reminderShown = false; updateDot();
+            closePay();
+            alert('✅ भुगतान सफल! आपका नया प्लान चालू है।');
+          }
+        } catch (e) { 
+            alert('🚨 Network Error in Verify: ' + e.message); 
+            resetPayBtn(); 
+        }
+      },
+      modal: { ondismiss: resetPayBtn }
+    });
+    rzp.on('payment.failed', function () { alert('❌ भुगतान फेल हो गया'); resetPayBtn(); });
+    rzp.open();
+  } catch (e) {
+    console.error("Fetch/Network Error:", e);
+    // YE LINE ASLI CONNECTION/CORS ERROR DIKHAYEGI
+    alert('🚨 Asli Error: ' + e.message + '\n(Apne laptop me Right Click -> Inspect -> Console check karein)');
+    resetPayBtn();
   }
+}
 
   function payContinue() {
     if (!payToken) return;
