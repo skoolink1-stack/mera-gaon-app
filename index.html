@@ -400,7 +400,21 @@
 </style>
 </head>
 <body>
-    <div class="login-screen" id="loginScreen">
+  <!-- Razorpay Disclaimer Popup (Sirf Login Screen par) -->
+  <div id="disclaimerPopup" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:99999; align-items:center; justify-content:center; padding: 20px;">
+    <div style="background:var(--paper); border:2px solid var(--red-flag); border-radius:12px; padding:24px; max-width:400px; width:100%; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+      <h2 style="font-family:'Noto Serif Devanagari',serif; color:var(--red-flag); margin-top:0; text-align:center;">⚠️ Disclaimer / सूचना</h2>
+      <p style="font-size:14px; color:var(--ink); line-height:1.6; margin-bottom:12px; font-weight:500;">
+        <b>"Mera Gaon" is an independent, private technology platform</b> developed by a Sole Proprietorship (UDYAM-HR-04-0051077). <br><br>
+        We are <b>NOT</b> affiliated with, endorsed by, or officially partnered with the Government of Haryana or any government department.
+      </p>
+      <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.5; margin-bottom:20px; background:#F2EAD3; padding:10px; border-radius:6px; border:1px dashed var(--haldi);">
+        यह एक प्राइवेट ऐप है जो नागरिकों और अधिकारियों के बीच संपर्क आसान बनाने के लिए बनाया गया है। यह कोई सरकारी ऐप नहीं है।
+      </p>
+      <button onclick="closeDisclaimer()" style="width:100%; padding:12px; background:var(--neem); color:white; border:none; border-radius:8px; font-weight:bold; font-size:16px; cursor:pointer;">OK, I Understand</button>
+    </div>
+  </div>
+  <div class="login-screen" id="loginScreen">
   <div class="login-card">
     <h1 style="font-family:'Noto Serif Devanagari',serif; color:var(--neem-dark); margin-top:0; text-align:center;">मेरा गाँव</h1>
     
@@ -2077,19 +2091,36 @@ async function addComment() {
       submitBtn.style.background = "var(--neem)";
     }
   }
-    async function autoLogin() {
+    // Disclaimer band karne ka function
+  function closeDisclaimer() {
+    document.getElementById('disclaimerPopup').style.display = 'none';
+  }
+
+  // Updated autoLogin function (Isme Disclaimer ki logic jodi gayi hai)
+  async function autoLogin() {
     let t = '';
     try { t = localStorage.getItem('mg_token') || ''; } catch (e) {}
-    if (!t) return;
+    
+    // Agar user logged in nahi hai (token nahi hai), toh Login page aur Disclaimer dikhao
+    if (!t) { 
+      document.getElementById('disclaimerPopup').style.display = 'flex';
+      return; 
+    }
+    
     authToken = t;
     try {
       const res = await authFetch(`${API_BASE}/api/auth/me`);
       const r = await res.json().catch(() => ({}));
+      
+      // Agar token purana ya expire ho gaya hai, toh Login page aur Disclaimer dikhao
       if (!res.ok || !r.user) {
         if (res.status === 401) { try { localStorage.removeItem('mg_token'); } catch (e) {} }
         authToken = '';
+        document.getElementById('disclaimerPopup').style.display = 'flex';
         return;
       }
+      
+      // Agar user sahi mein logged in hai, toh BIN POPUP KE seedha andar bhejo
       const u = r.user;
       loggedInUserName = u.name;
       loggedInUserRole = u.role === 'citizen' ? '' : u.role;
@@ -2098,6 +2129,7 @@ async function addComment() {
       loggedInUserId = u._id;
       loggedInBlock = u.block;
       loggedInPhone = u.phone;
+      
       document.getElementById('loginScreen').style.display = 'none';
       if (loggedInUserRole) {
         document.getElementById('officialDashboard').style.display = 'block';
@@ -2109,7 +2141,11 @@ async function addComment() {
         checkVillageAdminPrompt();
         applySub(r.sub);
       }
-    } catch (e) { authToken = ''; }
+    } catch (e) { 
+      authToken = ''; 
+      // Network error ke case mein bhi login screen par aayega, toh disclaimer dikha do
+      document.getElementById('disclaimerPopup').style.display = 'flex';
+    }
   }
 
   window.onload = function() {

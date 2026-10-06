@@ -12,7 +12,7 @@ const officialSchema = new mongoose.Schema({
     },
     name: { type: String, required: true },
     email: { type: String },
-    phone: { type: String, required: true },
+    phone: { type: String },
     district: { type: String, required: true },
     block: { type: String },
     village: { type: String },
