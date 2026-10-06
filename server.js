@@ -56,7 +56,10 @@ async function userFromReq(req) {
 const Payment = require('./models/Payment');
 const GRACE_DAYS = 2;
 const DAY_MS = 86400000;
-const PLANS = { monthly: { amount: 2000, label: '1 महीना' }, yearly: { amount: 22000, label: '1 साल' } };
+const PLANS = {
+    monthly: { amount: 2000, label: '1 महीना' },   // ₹20 = 2000 paise
+    yearly:  { amount: 22000, label: '1 साल' }      // ₹220 = 22000 paise
+};
 
 function addPlan(from, plan) {
     const d = new Date(from);
