@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="hi">
 <head>
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MERA GAON</title>
@@ -926,75 +925,30 @@
   const now = document.getElementById('payNowBtn');
   now.disabled = true;
   now.innerText = '⏳ कृपया रुकें...';
-  
+
   try {
     const body = { plan: selectedPlan };
     if (payMode === 'register') {
       body.email = document.getElementById('regEmail').value;
       body.phone = document.getElementById('regPhone').value;
+      body.name = document.getElementById('regName').value;
+      saveRegForm();   // Instamojo पर जाने से पहले फॉर्म बचा लो
     }
-    
-    console.log("API Call Jaa Rahi Hai:", `${API_BASE}/api/payment/create-order`);
-    
+
     const res = await authFetch(`${API_BASE}/api/payment/create-order`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     });
-    
-    const data = await res.json().catch((err) => {
-      console.error("JSON Error:", err);
-      return { success: false, error: "Backend se galat format me data aaya" };
-    });
+    const data = await res.json().catch(() => ({ success: false }));
 
-    console.log("Server Ka Jawab:", data);
-    
-    if (!data.success) { 
-      // YE LINE BACKEND KA ERROR DIKHAYEGI
-      alert('❌ Backend Error: ' + (data.error || 'पेमेंट शुरू नहीं हो पाया')); 
-      resetPayBtn(); 
-      return; 
+    if (!data.success || !data.paymentUrl) {
+      alert('❌ ' + (data.error || 'पेमेंट शुरू नहीं हो पाया'));
+      resetPayBtn();
+      return;
     }
-
-    const rzp = new Razorpay({
-      key: data.keyId,
-      amount: data.order.amount,
-      currency: 'INR',
-      name: 'मेरा गाँव',
-      description: selectedPlan === 'yearly' ? 'वार्षिक ऐप फीस' : 'मासिक ऐप फीस',
-      order_id: data.order.id,
-      prefill: { contact: body.phone || '', email: body.email || '' },
-      theme: { color: '#4C6444' },
-      handler: async function (r) {
-        try {
-          const v = await authFetch(`${API_BASE}/api/payment/verify`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r)
-          });
-          const vd = await v.json().catch(() => ({}));
-          if (!vd.success) {
-            alert('❌ Verify Error: ' + (vd.error || 'पुष्टि नहीं हो पाई'));
-            resetPayBtn(); return;
-          }
-          if (vd.mode === 'register') {
-            payToken = vd.payToken;
-            try { localStorage.setItem('mg_paytoken', payToken); } catch (e) {}
-            openPay('register');
-          } else {
-            subState = vd.sub; reminderShown = false; updateDot();
-            closePay();
-            alert('✅ भुगतान सफल! आपका नया प्लान चालू है।');
-          }
-        } catch (e) { 
-            alert('🚨 Network Error in Verify: ' + e.message); 
-            resetPayBtn(); 
-        }
-      },
-      modal: { ondismiss: resetPayBtn }
-    });
-    rzp.on('payment.failed', function () { alert('❌ भुगतान फेल हो गया'); resetPayBtn(); });
-    rzp.open();
+    window.location.href = data.paymentUrl;   // Instamojo का पेज खुलेगा
   } catch (e) {
-    console.error("Fetch/Network Error:", e);
-    // YE LINE ASLI CONNECTION/CORS ERROR DIKHAYEGI
-    alert('🚨 Asli Error: ' + e.message + '\n(Apne laptop me Right Click -> Inspect -> Console check karein)');
+    console.error(e);
+    alert('🚨 सर्वर से कनेक्ट नहीं हो पा रहा: ' + e.message);
     resetPayBtn();
   }
 }
@@ -2183,13 +2137,18 @@ async function addComment() {
     }
   }
 
-  window.onload = function() {
+  window.onload = async function() {
     switchLoginType('citizen');
     const distSelect = document.getElementById('regDistrict');
     for (let dist in haryanaFullData) {
       distSelect.add(new Option(dist, dist));
     }
-    autoLogin();
+    const ret = await handlePaymentReturn();
+    await autoLogin();
+    if (ret === 'register') {
+      restoreRegForm();
+      openPay('register');   // "भुगतान हो गया" + OTP भेजें बटन दिखेगा
+    }
   };
 
   function populateBlocks() {
@@ -2535,6 +2494,66 @@ function logout() {
         console.error("प्रोफाइल डेटा लोड एरर:", err);
       }
     }
+    function saveRegForm() {
+  try {
+    sessionStorage.setItem('mg_form', JSON.stringify({
+      name: document.getElementById('regName').value,
+      phone: document.getElementById('regPhone').value,
+      email: document.getElementById('regEmail').value,
+      district: document.getElementById('regDistrict').value,
+      block: document.getElementById('regBlock').value,
+      village: document.getElementById('regVillage').value
+    }));
+  } catch (e) {}
+}
+
+function restoreRegForm() {
+  try {
+    const f = JSON.parse(sessionStorage.getItem('mg_form') || 'null');
+    if (!f) return;
+    document.getElementById('regName').value = f.name || '';
+    document.getElementById('regPhone').value = f.phone || '';
+    document.getElementById('regEmail').value = f.email || '';
+    document.getElementById('regDistrict').value = f.district || '';
+    populateBlocks();
+    document.getElementById('regBlock').value = f.block || '';
+    populateVillages();
+    document.getElementById('regVillage').value = f.village || '';
+    sessionStorage.removeItem('mg_form');
+  } catch (e) {}
+}
+
+// Instamojo से वापस आने पर चलता है
+async function handlePaymentReturn() {
+  const q = new URLSearchParams(location.search);
+  const prId = q.get('payment_request_id');
+  if (!prId) return null;
+  history.replaceState({}, '', location.pathname);   // URL साफ, ताकि refresh पर दोबारा verify न हो
+
+  const status = q.get('payment_status');
+  if (status && status !== 'Credit') { alert('❌ भुगतान पूरा नहीं हुआ।'); return 'failed'; }
+
+  try {
+    const r = await fetch(`${API_BASE}/api/payment/verify`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payment_request_id: prId })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.success) { alert('❌ ' + (d.error || 'पुष्टि नहीं हो पाई')); return 'failed'; }
+
+    if (d.mode === 'register') {
+      payToken = d.payToken;
+      try { localStorage.setItem('mg_paytoken', payToken); } catch (e) {}
+      return 'register';
+    }
+    reminderShown = false;
+    alert('✅ भुगतान सफल! आपका नया प्लान चालू है।');
+    return 'renew';
+  } catch (e) {
+    alert('🚨 सर्वर से कनेक्ट नहीं हो पा रहा: ' + e.message);
+    return 'failed';
+  }
+}
 </script>
 <div class="pay-screen" id="payScreen">
   <div class="chat-header">
@@ -2555,7 +2574,7 @@ function logout() {
     </div>
 
     <button class="submit-btn" id="payNowBtn" onclick="startPayment()" style="margin-top:6px;">भुगतान करें</button>
-    <p style="font-size:12px; color:var(--ink-soft); text-align:center; margin:8px 0 18px;">सिर्फ़ UPI से भुगतान होगा। कोई कार्ड या बैंक की जानकारी नहीं माँगी जाएगी। सुरक्षित भुगतान Razorpay से।</p>
+    <p style="font-size:12px; color:var(--ink-soft); text-align:center; margin:8px 0 18px;">सुरक्षित भुगतान Instamojo से। हम आपकी कार्ड या बैंक की जानकारी नहीं रखते।</p>
 
     <button class="submit-btn" id="payContinueBtn" onclick="payContinue()" disabled style="background:var(--haldi); color:var(--ink); opacity:.5;">OTP भेजें</button>
   </div>

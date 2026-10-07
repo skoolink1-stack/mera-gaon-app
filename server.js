@@ -4,7 +4,6 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
 const axios = require('axios');
-const Razorpay = require('razorpay');
 const crypto = require('crypto');
 
 
@@ -34,7 +33,7 @@ const authLimiter = rateLimit({
     legacyHeaders: false,
     message: { success: false, error: 'बहुत ज़्यादा कोशिशें हुईं, 15 मिनट बाद दोबारा आएँ' }
 });
-app.use(['/api/auth/login', '/api/auth/send-otp', '/api/auth/register', '/api/payment/create-order'], authLimiter);
+app.use(['/api/auth/login', '/api/auth/send-otp', '/api/auth/register', '/api/payment/create-order', '/api/payment/verify'], authLimiter);
 const jwt = require('jsonwebtoken');
 
 const LEVEL_OF_ROLE = { 'सरपंच': 1, 'BDO': 2, 'DC/SDM': 3 };
@@ -962,10 +961,11 @@ app.post('/api/admin/verify-official/:id', async (req, res) => {
     } catch (error) { res.status(500).send('एरर: ' + error.message); }
 });
 
-// --- Razorpay Payment APIs ---
-const razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET
+// --- Instamojo Payment APIs (API v1.1) ---
+const INSTAMOJO_BASE = process.env.INSTAMOJO_BASE || 'https://test.instamojo.com/api/1.1';
+const imHeaders = () => ({
+    'X-Api-Key': process.env.INSTAMOJO_API_KEY,
+    'X-Auth-Token': process.env.INSTAMOJO_AUTH_TOKEN
 });
 
 app.post('/api/payment/create-order', optionalAuth, async (req, res) => {
@@ -975,39 +975,65 @@ app.post('/api/payment/create-order', optionalAuth, async (req, res) => {
         const uid = req.user ? String(req.user._id) : '';
         const email = String(req.body.email || (req.user && req.user.email) || '').slice(0, 80);
         const phone = String(req.body.phone || (req.user && req.user.phone) || '').slice(0, 15);
+        const name = String(req.body.name || (req.user && req.user.name) || 'Mera Gaon User').slice(0, 60);
 
-        const order = await razorpay.orders.create({
-            amount: plan.amount, currency: 'INR',
-            receipt: 'mg_' + Date.now(),
-            notes: { plan: req.body.plan, userId: uid, email, phone }
+        const form = new URLSearchParams({
+            purpose: 'Mera Gaon App Fee',
+            amount: (plan.amount / 100).toFixed(2),
+            buyer_name: name,
+            redirect_url: process.env.FRONTEND_URL,
+            allow_repeated_payments: 'false',
+            send_email: 'false',
+            send_sms: 'false'
         });
-        await Payment.create({ orderId: order.id, plan: req.body.plan, amount: plan.amount, userId: uid, email, phone });
-        res.json({ success: true, order, keyId: process.env.RAZORPAY_KEY_ID });
+        if (email) form.append('email', email);
+        if (/^\d{10}$/.test(phone)) form.append('phone', phone);
+
+        const r = await axios.post(`${INSTAMOJO_BASE}/payment-requests/`, form.toString(), {
+            headers: { ...imHeaders(), 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+        const pr = r.data && r.data.payment_request;
+        if (!r.data.success || !pr) throw new Error('Instamojo ने रिक्वेस्ट नहीं बनाई');
+
+        await Payment.create({ orderId: pr.id, plan: req.body.plan, amount: plan.amount, userId: uid, email, phone });
+        res.json({ success: true, paymentUrl: pr.longurl });
     } catch (error) {
-        console.error('create-order error:', error.message);
+        console.error('create-order error:', error.response ? JSON.stringify(error.response.data) : error.message);
         res.status(500).json({ success: false, error: 'पेमेंट शुरू नहीं हो पाया' });
     }
 });
 
 app.post('/api/payment/verify', optionalAuth, async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-        if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-            return res.status(400).json({ success: false, error: 'अधूरी जानकारी' });
-        }
-        const expected = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-            .update(razorpay_order_id + '|' + razorpay_payment_id).digest('hex');
-        if (expected !== razorpay_signature) return res.status(400).json({ success: false, error: 'पेमेंट सत्यापित नहीं हुआ' });
+        const prId = String(req.body.payment_request_id || '');
+        if (!prId) return res.status(400).json({ success: false, error: 'अधूरी जानकारी' });
 
-        const p = await Payment.findOneAndUpdate(
-            { orderId: razorpay_order_id, status: 'created' },
-            { status: 'paid', paymentId: razorpay_payment_id, paidAt: new Date() },
+        const p0 = await Payment.findOne({ orderId: prId });
+        if (!p0) return res.status(404).json({ success: false, error: 'पेमेंट रिकॉर्ड नहीं मिला' });
+
+        // Instamojo से सीधे पूछो — URL के params पर भरोसा नहीं करना
+        const r = await axios.get(`${INSTAMOJO_BASE}/payment-requests/${prId}/`, { headers: imHeaders() });
+        const pr = r.data && r.data.payment_request;
+        if (!pr) return res.status(400).json({ success: false, error: 'पेमेंट की जानकारी नहीं मिली' });
+
+        const credit = (pr.payments || []).find(x => x.status === 'Credit');
+        if (!credit) return res.status(400).json({ success: false, error: 'भुगतान पूरा नहीं हुआ' });
+        if (Math.round(parseFloat(pr.amount) * 100) !== p0.amount) {
+            return res.status(400).json({ success: false, error: 'राशि मेल नहीं खाई' });
+        }
+
+        let p = await Payment.findOneAndUpdate(
+            { orderId: prId, status: 'created' },
+            { status: 'paid', paymentId: credit.payment_id, paidAt: new Date() },
             { returnDocument: 'after' }
         );
+        // register वाला पेमेंट पहले paid हो चुका पर अभी use नहीं हुआ, तो टोकन दोबारा दे दो
+        if (!p) p = await Payment.findOne({ orderId: prId, status: 'paid', claimed: false, userId: '' });
         if (!p) return res.status(400).json({ success: false, error: 'यह पेमेंट पहले ही दर्ज हो चुका है' });
 
-        if (p.userId) {   // renewal: नया प्लान पुराने के खत्म होने के बाद से शुरू
+        if (p.userId) {   // renewal
             const u = await User.findById(p.userId);
+            if (!u) return res.status(404).json({ success: false, error: 'यूज़र नहीं मिला' });
             const start = (u.subEnd && u.subEnd > new Date()) ? u.subEnd : new Date();
             u.subEnd = addPlan(start, p.plan);
             u.remind2 = false;
@@ -1020,7 +1046,7 @@ app.post('/api/payment/verify', optionalAuth, async (req, res) => {
         const payToken = jwt.sign({ pid: String(p._id), kind: 'pay' }, process.env.JWT_SECRET, { expiresIn: '3d' });
         res.json({ success: true, mode: 'register', payToken });
     } catch (error) {
-        console.error('verify error:', error.message);
+        console.error('verify error:', error.response ? JSON.stringify(error.response.data) : error.message);
         res.status(500).json({ success: false, error: 'पेमेंट की पुष्टि नहीं हो पाई' });
     }
 });
