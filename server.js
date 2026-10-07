@@ -961,29 +961,29 @@ app.post('/api/admin/verify-official/:id', async (req, res) => {
     } catch (error) { res.status(500).send('एरर: ' + error.message); }
 });
 
-// --- Instamojo Payment APIs (OAuth 2.0 with Referer Fix) ---
+// --- Instamojo Payment APIs (OAuth 2.0, API v2) ---
 const INSTAMOJO_BASE = process.env.INSTAMOJO_BASE || 'https://api.instamojo.com';
+let imToken = { value: '', exp: 0 };
 
 async function getInstamojoToken() {
-    const params = new URLSearchParams();
-    params.append('grant_type', 'client_credentials');
-    params.append('client_id', process.env.INSTAMOJO_CLIENT_ID);
-    params.append('client_secret', process.env.INSTAMOJO_CLIENT_SECRET);
-
-    const res = await axios.post(`${INSTAMOJO_BASE}/oauth/token/`, params, {
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Referer': process.env.FRONTEND_URL || 'https://mera-gaon-app.vercel.app'
-        }
+    if (imToken.value && Date.now() < imToken.exp) return imToken.value;
+    const params = new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: process.env.INSTAMOJO_CLIENT_ID,
+        client_secret: process.env.INSTAMOJO_CLIENT_SECRET
     });
-    return res.data.access_token;
+    const r = await axios.post(`${INSTAMOJO_BASE}/oauth2/token/`, params.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+    imToken = { value: r.data.access_token, exp: Date.now() + ((r.data.expires_in || 3600) - 300) * 1000 };
+    return imToken.value;
 }
 
 app.post('/api/payment/create-order', optionalAuth, async (req, res) => {
     try {
         const plan = PLANS[req.body.plan];
         if (!plan) return res.status(400).json({ success: false, error: 'गलत प्लान' });
-        
+
         const uid = req.user ? String(req.user._id) : '';
         const email = String(req.body.email || (req.user && req.user.email) || '').slice(0, 80);
         const phone = String(req.body.phone || (req.user && req.user.phone) || '').slice(0, 15);
@@ -1003,22 +1003,21 @@ app.post('/api/payment/create-order', optionalAuth, async (req, res) => {
         if (email) form.append('email', email);
         if (/^\d{10}$/.test(phone)) form.append('phone', phone);
 
-        // यहाँ headers में Referer जोड़ दिया गया है ताकि 403 Forbidden एरर न आए
-        const r = await axios.post(`${INSTAMOJO_BASE}/v2/payment-requests/`, form.toString(), {
+        const r = await axios.post(`${INSTAMOJO_BASE}/v2/payment_requests/`, form.toString(), {
             headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Referer': process.env.FRONTEND_URL || 'https://mera-gaon-app.vercel.app'
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/x-www-form-urlencoded'
             }
         });
 
         const pr = r.data;
-        if (!pr || !pr.id) throw new Error('Instamojo ने रिक्वेस्ट नहीं बनाई');
+        if (!pr || !pr.id || !pr.longurl) throw new Error('Instamojo ने रिक्वेस्ट नहीं बनाई');
 
         await Payment.create({ orderId: pr.id, plan: req.body.plan, amount: plan.amount, userId: uid, email, phone });
         res.json({ success: true, paymentUrl: pr.longurl });
     } catch (error) {
-        console.error('create-order error:', error.response ? JSON.stringify(error.response.data) : error.message);
+        imToken = { value: '', exp: 0 };
+        console.error('create-order error:', error.response ? JSON.stringify(error.response.data).slice(0, 500) : error.message);
         res.status(500).json({ success: false, error: 'पेमेंट शुरू नहीं हो पाया' });
     }
 });
@@ -1032,19 +1031,15 @@ app.post('/api/payment/verify', optionalAuth, async (req, res) => {
         if (!p0) return res.status(404).json({ success: false, error: 'पेमेंट रिकॉर्ड नहीं मिला' });
 
         const accessToken = await getInstamojoToken();
-
-        const r = await axios.get(`${INSTAMOJO_BASE}/v2/payment-requests/${prId}/`, {
-            headers: { 
-                'Authorization': `Bearer ${accessToken}`,
-                'Referer': process.env.FRONTEND_URL || 'https://mera-gaon-app.vercel.app'
-            }
+        const r = await axios.get(`${INSTAMOJO_BASE}/v2/payment_requests/${prId}/`, {
+            headers: { Authorization: `Bearer ${accessToken}` }
         });
         const pr = r.data;
         if (!pr) return res.status(400).json({ success: false, error: 'पेमेंट की जानकारी नहीं मिली' });
 
-        const paymentsList = pr.payments || [];
-        const credit = paymentsList.find(x => x.status === 'successful' || x.status === 'Credit');
-        if (!credit) return res.status(400).json({ success: false, error: 'भुगतान पूरा नहीं हुआ' });
+        const credit = (pr.payments || []).find(x => ['successful', 'credit'].includes(String(x.status).toLowerCase()));
+        const completed = String(pr.status).toLowerCase() === 'completed';
+        if (!credit && !completed) return res.status(400).json({ success: false, error: 'भुगतान पूरा नहीं हुआ' });
 
         if (Math.round(parseFloat(pr.amount) * 100) !== p0.amount) {
             return res.status(400).json({ success: false, error: 'राशि मेल नहीं खाई' });
@@ -1052,13 +1047,13 @@ app.post('/api/payment/verify', optionalAuth, async (req, res) => {
 
         let p = await Payment.findOneAndUpdate(
             { orderId: prId, status: 'created' },
-            { status: 'paid', paymentId: credit.payment_id || credit.id, paidAt: new Date() },
+            { status: 'paid', paymentId: credit ? (credit.payment_id || credit.id || '') : '', paidAt: new Date() },
             { returnDocument: 'after' }
         );
         if (!p) p = await Payment.findOne({ orderId: prId, status: 'paid', claimed: false, userId: '' });
         if (!p) return res.status(400).json({ success: false, error: 'यह पेमेंट पहले ही दर्ज हो चुका है' });
 
-        if (p.userId) {   
+        if (p.userId) {
             const u = await User.findById(p.userId);
             if (!u) return res.status(404).json({ success: false, error: 'यूज़र नहीं मिला' });
             const start = (u.subEnd && u.subEnd > new Date()) ? u.subEnd : new Date();
@@ -1073,7 +1068,7 @@ app.post('/api/payment/verify', optionalAuth, async (req, res) => {
         const payToken = jwt.sign({ pid: String(p._id), kind: 'pay' }, process.env.JWT_SECRET, { expiresIn: '3d' });
         res.json({ success: true, mode: 'register', payToken });
     } catch (error) {
-        console.error('verify error:', error.response ? JSON.stringify(error.response.data) : error.message);
+        console.error('verify error:', error.response ? JSON.stringify(error.response.data).slice(0, 500) : error.message);
         res.status(500).json({ success: false, error: 'पेमेंट की पुष्टि नहीं हो पाई' });
     }
 });

@@ -2531,7 +2531,7 @@ async function handlePaymentReturn() {
   history.replaceState({}, '', location.pathname);   // URL साफ, ताकि refresh पर दोबारा verify न हो
 
   const status = q.get('payment_status');
-  if (status && status !== 'Credit') { alert('❌ भुगतान पूरा नहीं हुआ।'); return 'failed'; }
+  if (status && /fail/i.test(status)) { alert('❌ भुगतान पूरा नहीं हुआ।'); return 'failed'; }
 
   try {
     const r = await fetch(`${API_BASE}/api/payment/verify`, {
