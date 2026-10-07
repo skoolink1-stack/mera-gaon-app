@@ -961,17 +961,21 @@ app.post('/api/admin/verify-official/:id', async (req, res) => {
     } catch (error) { res.status(500).send('एरर: ' + error.message); }
 });
 
-// --- Instamojo Payment APIs (OAuth 2.0) ---
+// --- Instamojo Payment APIs (OAuth 2.0 with Referer Fix) ---
 const INSTAMOJO_BASE = process.env.INSTAMOJO_BASE || 'https://api.instamojo.com';
 
-// फंक्शन जो Instamojo से टोकन जनरेट करेगा
 async function getInstamojoToken() {
     const params = new URLSearchParams();
     params.append('grant_type', 'client_credentials');
     params.append('client_id', process.env.INSTAMOJO_CLIENT_ID);
     params.append('client_secret', process.env.INSTAMOJO_CLIENT_SECRET);
 
-    const res = await axios.post(`${INSTAMOJO_BASE}/oauth/token/`, params);
+    const res = await axios.post(`${INSTAMOJO_BASE}/oauth/token/`, params, {
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': process.env.FRONTEND_URL || 'https://mera-gaon-app.vercel.app'
+        }
+    });
     return res.data.access_token;
 }
 
@@ -985,10 +989,8 @@ app.post('/api/payment/create-order', optionalAuth, async (req, res) => {
         const phone = String(req.body.phone || (req.user && req.user.phone) || '').slice(0, 15);
         const name = String(req.body.name || (req.user && req.user.name) || 'Mera Gaon User').slice(0, 60);
 
-        // 1. पहले टोकन लो
         const accessToken = await getInstamojoToken();
 
-        // 2. फिर पेमेंट रिक्वेस्ट भेजो
         const form = new URLSearchParams({
             purpose: 'Mera Gaon App Fee',
             amount: (plan.amount / 100).toFixed(2),
@@ -1001,15 +1003,17 @@ app.post('/api/payment/create-order', optionalAuth, async (req, res) => {
         if (email) form.append('email', email);
         if (/^\d{10}$/.test(phone)) form.append('phone', phone);
 
+        // यहाँ headers में Referer जोड़ दिया गया है ताकि 403 Forbidden एरर न आए
         const r = await axios.post(`${INSTAMOJO_BASE}/v2/payment-requests/`, form.toString(), {
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/x-www-form-urlencoded'
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Referer': process.env.FRONTEND_URL || 'https://mera-gaon-app.vercel.app'
             }
         });
 
         const pr = r.data;
-        if (!pr || !pr.id) throw new Error('Instamojo ने रिक्वेस्ट نہیں बनाई');
+        if (!pr || !pr.id) throw new Error('Instamojo ने रिक्वेस्ट नहीं बनाई');
 
         await Payment.create({ orderId: pr.id, plan: req.body.plan, amount: plan.amount, userId: uid, email, phone });
         res.json({ success: true, paymentUrl: pr.longurl });
@@ -1030,7 +1034,10 @@ app.post('/api/payment/verify', optionalAuth, async (req, res) => {
         const accessToken = await getInstamojoToken();
 
         const r = await axios.get(`${INSTAMOJO_BASE}/v2/payment-requests/${prId}/`, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
+            headers: { 
+                'Authorization': `Bearer ${accessToken}`,
+                'Referer': process.env.FRONTEND_URL || 'https://mera-gaon-app.vercel.app'
+            }
         });
         const pr = r.data;
         if (!pr) return res.status(400).json({ success: false, error: 'पेमेंट की जानकारी नहीं मिली' });
