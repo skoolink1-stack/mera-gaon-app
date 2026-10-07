@@ -1001,7 +1001,7 @@ app.post('/api/payment/create-order', optionalAuth, async (req, res) => {
         if (email) form.append('email', email);
         if (/^\d{10}$/.test(phone)) form.append('phone', phone);
 
-        const r = await axios.post(`${INSTAMOJO_BASE}/v2/payment_requests/`, form.toString(), {
+        const r = await axios.post(`${INSTAMOJO_BASE}/v2/payment-requests/`, form.toString(), {
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/x-www-form-urlencoded'
@@ -1029,7 +1029,7 @@ app.post('/api/payment/verify', optionalAuth, async (req, res) => {
 
         const accessToken = await getInstamojoToken();
 
-        const r = await axios.get(`${INSTAMOJO_BASE}/v2/payment_requests/${prId}/`, {
+        const r = await axios.get(`${INSTAMOJO_BASE}/v2/payment-requests/${prId}/`, {
             headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         const pr = r.data;
