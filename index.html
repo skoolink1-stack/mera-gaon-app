@@ -940,6 +940,20 @@
     });
     const data = await res.json().catch(() => ({ success: false }));
 
+    if (data.success && data.demo) {
+      if (data.mode === 'register') {
+        payToken = data.payToken;
+        try { localStorage.setItem('mg_paytoken', payToken); } catch (e) {}
+        closePay();
+        sendOTP();          // seedha OTP chala jayega
+        return;
+      }
+      subState = data.sub; updateDot(); reminderShown = false;
+      closePay();
+      alert('✅ भुगतान सफल (डेमो)! आपका प्लान चालू है।');
+      return;
+    }
+
     if (!data.success || !data.paymentUrl) {
       alert('❌ ' + (data.error || 'पेमेंट शुरू नहीं हो पाया'));
       resetPayBtn();

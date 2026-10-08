@@ -59,6 +59,7 @@ const PLANS = {
     monthly: { amount: 2000, label: '1 महीना' },   // ₹20 = 2000 paise
     yearly:  { amount: 22000, label: '1 साल' }      // ₹220 = 22000 paise
 };
+const DEMO_PAYMENTS = process.env.DEMO_PAYMENTS === 'true';
 
 function addPlan(from, plan) {
     const d = new Date(from);
@@ -988,6 +989,27 @@ app.post('/api/payment/create-order', optionalAuth, async (req, res) => {
         const email = String(req.body.email || (req.user && req.user.email) || '').slice(0, 80);
         const phone = String(req.body.phone || (req.user && req.user.phone) || '').slice(0, 15);
         const name = String(req.body.name || (req.user && req.user.name) || 'Mera Gaon User').slice(0, 60);
+
+        // 🧪 DEMO MODE: Instamojo approve hone tak payment bypass
+        if (DEMO_PAYMENTS) {
+            const p = await Payment.create({
+                orderId: 'DEMO-' + crypto.randomBytes(8).toString('hex'),
+                plan: req.body.plan, amount: plan.amount, userId: uid, email, phone,
+                status: 'paid', paidAt: new Date()
+            });
+            if (uid && req.user) {
+                const u = req.user;
+                const start = (u.subEnd && u.subEnd > new Date()) ? u.subEnd : new Date();
+                u.subEnd = addPlan(start, p.plan);
+                u.remind2 = false;
+                u.remind1 = false;
+                await u.save({ validateModifiedOnly: true });
+                await Payment.updateOne({ _id: p._id }, { claimed: true });
+                return res.json({ success: true, demo: true, mode: 'renew', sub: subInfo(u) });
+            }
+            const payToken = jwt.sign({ pid: String(p._id), kind: 'pay' }, process.env.JWT_SECRET, { expiresIn: '3d' });
+            return res.json({ success: true, demo: true, mode: 'register', payToken });
+        }
 
         const accessToken = await getInstamojoToken();
 
