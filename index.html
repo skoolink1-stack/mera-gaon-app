@@ -840,7 +840,7 @@
   let loggedInBlock = "";
   let currentActiveCard = null;
   let authToken = '';
-  let payMode = 'register', selectedPlan = 'monthly', subState = null, reminderShown = false;
+  let payMode = 'register', selectedPlan = '', subState = null, reminderShown = false;
   let payToken = '';
   try { payToken = localStorage.getItem('mg_paytoken') || ''; } catch (e) {}
 
@@ -878,6 +878,7 @@
 
   function openPay(mode, locked) {
     payMode = mode;
+    selectedPlan = ''; planChosen = false;
     document.getElementById('payScreen').classList.add('open');
     document.getElementById('payBackBtn').style.display = locked ? 'none' : 'inline';
     document.getElementById('payLogoutBtn').style.display = (mode === 'renew' && locked) ? 'inline' : 'none';
@@ -918,7 +919,10 @@
     document.getElementById('plan-monthly').classList.toggle('sel', p === 'monthly');
     document.getElementById('plan-yearly').classList.toggle('sel', p === 'yearly');
     const now = document.getElementById('payNowBtn');
-    if (!now.disabled) now.innerText = p === 'yearly' ? '₹220 भुगतान करें' : '₹20 भुगतान करें';
+    if (payMode === 'register' && payToken) return;   // भुगतान पहले हो चुका, टेक्स्ट मत बदलो
+    now.innerText = p === 'yearly' ? '₹220 भुगतान करें'
+                  : p === 'monthly' ? '₹20 भुगतान करें'
+                  : 'पहले प्लान चुनें';
   }
 
     let planChosen = false;
@@ -2646,7 +2650,7 @@ async function handlePaymentReturn() {
   <div class="pay-body">
     <div id="payStatusBox" style="background:#EFE6CC; border-radius:8px; padding:12px; font-size:13.5px; line-height:1.6; margin-bottom:16px;"></div>
 
-    <div class="plan-card sel" id="plan-monthly" onclick="pickPlan('monthly')">
+    <div class="plan-card" id="plan-monthly" onclick="pickPlan('monthly')">
       <div><b>मासिक</b><div style="font-size:12px; color:var(--ink-soft);">1 महीने के लिए</div></div>
       <div class="pr">₹20</div>
     </div>
