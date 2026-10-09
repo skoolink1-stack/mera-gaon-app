@@ -891,6 +891,11 @@
     renderPayStatus();
     selectPlan(selectedPlan);
     restoreUtrBox();
+    planChosen = false;
+    document.getElementById('utrNotice').style.display = 'none';
+    const ag = document.getElementById('utrAgree');
+    if (ag) ag.checked = false;
+    updatePayBtnLock();
   }
 
   function closePay() { document.getElementById('payScreen').classList.remove('open'); }
@@ -916,13 +921,32 @@
     if (!now.disabled) now.innerText = p === 'yearly' ? '₹220 भुगतान करें' : '₹20 भुगतान करें';
   }
 
+    let planChosen = false;
+
+  function pickPlan(p) {
+    planChosen = true;
+    selectPlan(p);
+    document.getElementById('utrNotice').style.display = 'block';
+    updatePayBtnLock();
+  }
+
+  function updatePayBtnLock() {
+    const now = document.getElementById('payNowBtn');
+    if (payMode === 'register' && payToken) return;   // भुगतान पहले हो चुका
+    const agree = document.getElementById('utrAgree');
+    const ok = planChosen && agree && agree.checked;
+    now.disabled = !ok;
+    now.style.opacity = ok ? 1 : .5;
+  }
+
   function resetPayBtn() {
     const now = document.getElementById('payNowBtn');
     now.disabled = false;
     selectPlan(selectedPlan);
+    updatePayBtnLock();
   }
 
-    let upiRef = '', upiLinkLast = '';
+  let upiRef = '', upiLinkLast = '';
 
   function showUtrBox(d) {
     document.getElementById('utrBox').style.display = 'block';
@@ -2622,13 +2646,24 @@ async function handlePaymentReturn() {
   <div class="pay-body">
     <div id="payStatusBox" style="background:#EFE6CC; border-radius:8px; padding:12px; font-size:13.5px; line-height:1.6; margin-bottom:16px;"></div>
 
-    <div class="plan-card sel" id="plan-monthly" onclick="selectPlan('monthly')">
+    <div class="plan-card sel" id="plan-monthly" onclick="pickPlan('monthly')">
       <div><b>मासिक</b><div style="font-size:12px; color:var(--ink-soft);">1 महीने के लिए</div></div>
       <div class="pr">₹20</div>
     </div>
-    <div class="plan-card" id="plan-yearly" onclick="selectPlan('yearly')">
+    <div class="plan-card" id="plan-yearly" onclick="pickPlan('yearly')">
       <div><b>वार्षिक</b><div class="sv">₹20 की बचत</div><div style="font-size:12px; color:var(--ink-soft);">1 साल के लिए</div></div>
       <div class="pr">₹220</div>
+    </div>
+
+    <div id="utrNotice" style="display:none; background:#FFF8E1; border:2px solid var(--haldi); border-radius:8px; padding:12px; margin-top:6px; margin-bottom:12px;">
+      <label style="display:flex; gap:10px; align-items:flex-start; cursor:pointer; font-size:13.5px; line-height:1.6;">
+        <input type="checkbox" id="utrAgree" onchange="updatePayBtnLock()" style="width:22px; height:22px; margin-top:2px; flex-shrink:0;">
+        <span>
+          ⚠️ <b>ज़रूरी बात:</b> भुगतान होते ही अपना <b>UTR नंबर</b> (कुछ ऐप में इसे <b>UPI Ref No.</b> या <b>Transaction ID</b> भी कहते हैं) <b>कॉपी करके रख लें।</b> यह <b>12 अंकों</b> का होता है।<br>
+          भुगतान के बाद ऐप दोबारा खोलते ही यही नंबर यहाँ लिखकर भेजना होगा, <b>वरना आपका भुगतान मान्य नहीं होगा और अकाउंट नहीं बनेगा।</b><br>
+          <span style="color:var(--neem-dark); font-weight:700;">✔ मैंने समझ लिया</span>
+        </span>
+      </label>
     </div>
 
     <button class="submit-btn" id="payNowBtn" onclick="startPayment()" style="margin-top:6px;">भुगतान करें</button>
