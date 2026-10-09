@@ -399,6 +399,15 @@
 </style>
 </head>
 <body>
+  <div id="splash" style="position:fixed; inset:0; z-index:100001; background:var(--paper); display:flex; flex-direction:column; align-items:center; justify-content:center;">
+    <h1 style="font-family:'Noto Serif Devanagari',serif; color:var(--neem-dark); margin:0 0 8px;">मेरा गाँव</h1>
+    <p style="color:var(--ink-soft); font-size:14px; margin:0;">⏳ लोड हो रहा है...</p>
+  </div>
+  <script>
+    function hideSplash() { const s = document.getElementById('splash'); if (s) s.style.display = 'none'; }
+    try { if (!localStorage.getItem('mg_token')) hideSplash(); } catch (e) { hideSplash(); }
+    setTimeout(hideSplash, 20000);
+  </script>
   <!-- Instamojo Disclaimer Popup (Sirf Login Screen par) -->
   <div id="disclaimerPopup" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:99999; align-items:center; justify-content:center; padding: 20px;">
     <div style="background:var(--paper); border:2px solid var(--red-flag); border-radius:12px; padding:24px; max-width:400px; width:100%; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
@@ -1262,6 +1271,7 @@ function renderComplaints(complaints) {
       if(result.success) {
         authToken = result.token || '';
         try { localStorage.setItem('mg_token', authToken); } catch (e) {}
+        try { localStorage.setItem('mg_user', JSON.stringify(result.user)); } catch (e) {}
         loggedInUserName = result.user.name;
         loggedInUserRole = result.user.role === 'citizen' ? '' : result.user.role;
         loggedInVillage = result.user.village;      
@@ -1414,6 +1424,7 @@ function renderComplaints(complaints) {
         }
         authToken = result.token || '';
         try { localStorage.setItem('mg_token', authToken); } catch (e) {}
+        try { localStorage.setItem('mg_user', JSON.stringify(result.user)); } catch (e) {}
         payToken = ''; try { localStorage.removeItem('mg_paytoken'); } catch (e) {}
         applySub(result.sub);
         loggedInUserName = result.user.name;
@@ -2171,59 +2182,73 @@ async function addComment() {
     document.getElementById('disclaimerPopup').style.display = 'none';
   }
 
-  // Updated autoLogin function (Isme Disclaimer ki logic jodi gayi hai)
+    function showLogin() {
+    hideSplash();
+    document.getElementById('mainApp').style.display = 'none';
+    document.getElementById('officialDashboard').style.display = 'none';
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('disclaimerPopup').style.display = 'flex';
+  }
+
+  function enterApp(u, sub) {
+    loggedInUserName = u.name;
+    loggedInUserRole = u.role === 'citizen' ? '' : u.role;
+    loggedInVillage = u.village;
+    loggedInDistrict = u.district;
+    loggedInUserId = u._id;
+    loggedInBlock = u.block;
+    loggedInPhone = u.phone;
+
+    document.getElementById('loginScreen').style.display = 'none';
+    if (loggedInUserRole) {
+      document.getElementById('officialDashboard').style.display = 'block';
+      loadOfficialComplaints();
+    } else {
+      document.getElementById('mainApp').style.display = 'block';
+      document.getElementById('headerVillageName').innerText = u.village + ", " + u.district;
+      loadComplaintsFromDB();
+      checkVillageAdminPrompt();
+      if (sub) applySub(sub);
+    }
+    hideSplash();
+  }
+
   async function autoLogin() {
     let t = '';
     try { t = localStorage.getItem('mg_token') || ''; } catch (e) {}
-    
-    // Agar user logged in nahi hai (token nahi hai), toh Login page aur Disclaimer dikhao
-    if (!t) { 
-      document.getElementById('disclaimerPopup').style.display = 'flex';
-      return; 
-    }
-    
+    if (!t) { hideSplash(); document.getElementById('disclaimerPopup').style.display = 'flex'; return; }
     authToken = t;
+
+    // फ़ोन में सेव यूज़र से ऐप तुरंत खोलो (सर्वर का इंतज़ार नहीं)
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem('mg_user') || 'null'); } catch (e) {}
+    if (cached && cached._id) enterApp(cached, null);
+
+    // पीछे से सर्वर से जाँच
     try {
       const res = await authFetch(`${API_BASE}/api/auth/me`);
       const r = await res.json().catch(() => ({}));
-      
-      // Agar token purana ya expire ho gaya hai, toh Login page aur Disclaimer dikhao
       if (!res.ok || !r.user) {
-        if (res.status === 401) { try { localStorage.removeItem('mg_token'); } catch (e) {} }
-        authToken = '';
-        document.getElementById('disclaimerPopup').style.display = 'flex';
+        if (res.status === 401) {
+          try { localStorage.removeItem('mg_token'); localStorage.removeItem('mg_user'); } catch (e) {}
+          authToken = '';
+          showLogin();
+        } else if (!cached) {
+          authToken = '';
+          showLogin();
+        }
         return;
       }
-      
-      // Agar user sahi mein logged in hai, toh BIN POPUP KE seedha andar bhejo
-      const u = r.user;
-      loggedInUserName = u.name;
-      loggedInUserRole = u.role === 'citizen' ? '' : u.role;
-      loggedInVillage = u.village;
-      loggedInDistrict = u.district;
-      loggedInUserId = u._id;
-      loggedInBlock = u.block;
-      loggedInPhone = u.phone;
-      
-      document.getElementById('loginScreen').style.display = 'none';
-      if (loggedInUserRole) {
-        document.getElementById('officialDashboard').style.display = 'block';
-        loadOfficialComplaints();
-      } else {
-        document.getElementById('mainApp').style.display = 'block';
-        document.getElementById('headerVillageName').innerText = u.village + ", " + u.district;
-        loadComplaintsFromDB();
-        checkVillageAdminPrompt();
-        applySub(r.sub);
-      }
-    } catch (e) { 
-      authToken = ''; 
-      // Network error ke case mein bhi login screen par aayega, toh disclaimer dikha do
-      document.getElementById('disclaimerPopup').style.display = 'flex';
+      try { localStorage.setItem('mg_user', JSON.stringify(r.user)); } catch (e) {}
+      if (!cached) enterApp(r.user, r.sub);
+      else applySub(r.sub);
+    } catch (e) {
+      if (!cached) { authToken = ''; showLogin(); }
     }
   }
 
   window.onload = async function() {
+    document.getElementById('feed').innerHTML = '<p style="text-align:center; padding:20px;">⏳ शिकायतें लोड हो रही हैं...</p>';
     switchLoginType('citizen');
     const distSelect = document.getElementById('regDistrict');
     for (let dist in haryanaFullData) {
@@ -2408,6 +2433,7 @@ function logout() {
   authToken = '';
   subState = null; reminderShown = false; updateDot(); closePay();
   try { localStorage.removeItem('mg_token'); } catch (e) {}
+  try { localStorage.removeItem('mg_user'); } catch (e) {}
   // 2. यूज़र की पहचान (Variables) को खाली करें
   loggedInUserRole = "";
   loggedInUserName = "जागरूक नागरिक";
@@ -2476,6 +2502,7 @@ function logout() {
       const res = await authFetch(`${API_BASE}/api/auth/me`, { method: 'DELETE' });
       if (res.ok) {
         try { localStorage.removeItem('mg_token'); } catch (e) {}
+        try { localStorage.removeItem('mg_user'); } catch (e) {}
         alert('अकाउंट हटा दिया गया।');
         window.location.reload();
       } else { alert('❌ अकाउंट नहीं हट पाया'); }
