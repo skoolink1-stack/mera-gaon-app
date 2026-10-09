@@ -33,7 +33,7 @@ const authLimiter = rateLimit({
     legacyHeaders: false,
     message: { success: false, error: 'बहुत ज़्यादा कोशिशें हुईं, 15 मिनट बाद दोबारा आएँ' }
 });
-app.use(['/api/auth/login', '/api/auth/send-otp', '/api/auth/register', '/api/payment/create-order', '/api/payment/verify'], authLimiter);
+app.use(['/api/auth/login', '/api/auth/send-otp', '/api/auth/register', '/api/payment/create-order', '/api/payment/verify', '/api/payment/upi-start', '/api/payment/upi-submit'], authLimiter);
 const jwt = require('jsonwebtoken');
 
 const LEVEL_OF_ROLE = { 'सरपंच': 1, 'BDO': 2, 'DC/SDM': 3 };
@@ -1093,6 +1093,113 @@ app.post('/api/payment/verify', optionalAuth, async (req, res) => {
         console.error('verify error:', error.response ? JSON.stringify(error.response.data).slice(0, 500) : error.message);
         res.status(500).json({ success: false, error: 'पेमेंट की पुष्टि नहीं हो पाई' });
     }
+});
+
+// ================= UPI (UTR se manual verify) =================
+const UPI_ID = process.env.UPI_ID || '';
+const UPI_NAME = process.env.UPI_NAME || 'Mera Gaon';
+
+app.post('/api/payment/upi-start', optionalAuth, async (req, res) => {
+    try {
+        if (!UPI_ID) return res.status(500).json({ success: false, error: 'UPI ID सेट नहीं है' });
+        const plan = PLANS[req.body.plan];
+        if (!plan) return res.status(400).json({ success: false, error: 'गलत प्लान' });
+
+        const uid = req.user ? String(req.user._id) : '';
+        const email = String(req.body.email || (req.user && req.user.email) || '').slice(0, 80);
+        const phone = String(req.body.phone || (req.user && req.user.phone) || '').slice(0, 15);
+
+        const ref = crypto.randomBytes(3).toString('hex').toUpperCase();   // जैसे A1B2C3
+        await Payment.create({ orderId: 'UPI-' + ref, plan: req.body.plan, amount: plan.amount, userId: uid, email, phone });
+
+        const amt = (plan.amount / 100).toFixed(2);
+        const upiLink = `upi://pay?pa=${encodeURIComponent(UPI_ID)}&pn=${encodeURIComponent(UPI_NAME)}&am=${amt}&cu=INR&tn=${encodeURIComponent('MG-' + ref)}`;
+        res.json({ success: true, upiLink, ref, upiId: UPI_ID, amount: amt });
+    } catch (e) {
+        console.error('upi-start error:', e.message);
+        res.status(500).json({ success: false, error: 'पेमेंट शुरू नहीं हो पाया' });
+    }
+});
+
+app.post('/api/payment/upi-submit', optionalAuth, async (req, res) => {
+    try {
+        const ref = String(req.body.ref || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const utr = String(req.body.utr || '').trim();
+        if (!ref) return res.status(400).json({ success: false, error: 'रेफ़रेंस कोड नहीं मिला, दोबारा भुगतान शुरू करें' });
+        if (!/^\d{12}$/.test(utr)) return res.status(400).json({ success: false, error: 'UTR 12 अंकों का होना चाहिए' });
+        if (await Payment.findOne({ utr })) return res.status(400).json({ success: false, error: 'यह UTR पहले इस्तेमाल हो चुका है' });
+
+        const p = await Payment.findOneAndUpdate(
+            { orderId: 'UPI-' + ref, status: 'created' },
+            { status: 'paid', utr, paidAt: new Date() },
+            { returnDocument: 'after' }
+        );
+        if (!p) return res.status(400).json({ success: false, error: 'यह भुगतान रिक्वेस्ट नहीं मिली या पहले ही दर्ज हो चुकी है' });
+
+        if (p.userId) {
+            const u = await User.findById(p.userId);
+            if (!u) return res.status(404).json({ success: false, error: 'यूज़र नहीं मिला' });
+            const start = (u.subEnd && u.subEnd > new Date()) ? u.subEnd : new Date();
+            u.subEnd = addPlan(start, p.plan);
+            u.remind2 = false;
+            u.remind1 = false;
+            await u.save({ validateModifiedOnly: true });
+            await Payment.updateOne({ _id: p._id }, { claimed: true });
+            return res.json({ success: true, mode: 'renew', sub: subInfo(u) });
+        }
+
+        const payToken = jwt.sign({ pid: String(p._id), kind: 'pay' }, process.env.JWT_SECRET, { expiresIn: '3d' });
+        res.json({ success: true, mode: 'register', payToken });
+    } catch (e) {
+        console.error('upi-submit error:', e.message);
+        res.status(500).json({ success: false, error: 'पुष्टि नहीं हो पाई' });
+    }
+});
+
+// --- एडमिन पेज: सारे UTR की लिस्ट ---
+app.get('/api/admin/payments', async (req, res) => {
+    try {
+        if (!process.env.ADMIN_SECRET || req.query.secret !== process.env.ADMIN_SECRET) return res.status(403).send('गलत लिंक');
+        const list = await Payment.find({ utr: { $regex: /^\d{12}$/ } }).sort({ paidAt: -1 }).limit(100);
+        const secret = escHtml(req.query.secret);
+        const rows = list.map(p => {
+            const bg = p.rejected ? '#fdd' : (p.reviewed ? '#dfd' : '#fff');
+            const state = p.rejected ? '❌ फर्ज़ी' : (p.reviewed ? '✅ सही' : '⏳ जाँचना बाकी');
+            const btns = (p.rejected || p.reviewed) ? '' : ['approve', 'reject'].map(a => `
+                <form method="POST" action="/api/admin/payments/${p._id}" style="display:inline;">
+                  <input type="hidden" name="secret" value="${secret}">
+                  <input type="hidden" name="action" value="${a}">
+                  <button type="submit">${a === 'approve' ? '✅ सही' : '❌ फर्ज़ी'}</button>
+                </form>`).join(' ');
+            return `<tr style="background:${bg}">
+              <td>${p.paidAt ? new Date(p.paidAt).toLocaleString('hi-IN', { timeZone: 'Asia/Kolkata' }) : ''}</td>
+              <td><b>${escHtml(p.utr)}</b></td>
+              <td>₹${p.amount / 100} (${escHtml(p.plan)})</td>
+              <td>${escHtml(p.phone)}<br>${escHtml(p.email)}</td>
+              <td>${escHtml(p.orderId)}</td>
+              <td>${state}<br>${btns}</td></tr>`;
+        }).join('');
+        res.send(`<!DOCTYPE html><html lang="hi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font-family:sans-serif;padding:10px}table{border-collapse:collapse;width:100%;font-size:13px}td,th{border:1px solid #ccc;padding:6px;text-align:left}</style></head>
+<body><h2>UPI भुगतान (UTR)</h2><p>अपने बैंक/PhonePe में UTR मिलाओ। मिले तो ✅, ना मिले तो ❌ (❌ पर उस यूज़र का प्लान तुरंत खत्म हो जाएगा)।</p>
+<table><tr><th>समय</th><th>UTR</th><th>राशि</th><th>यूज़र</th><th>Ref</th><th>स्थिति</th></tr>${rows}</table></body></html>`);
+    } catch (e) { res.status(500).send('एरर: ' + e.message); }
+});
+
+app.post('/api/admin/payments/:id', async (req, res) => {
+    try {
+        const { secret, action } = req.body;
+        if (!process.env.ADMIN_SECRET || secret !== process.env.ADMIN_SECRET) return res.status(403).send('गलत लिंक');
+        const p = await Payment.findById(req.params.id);
+        if (!p) return res.send('पेमेंट नहीं मिली');
+        if (action === 'reject') {
+            await Payment.updateOne({ _id: p._id }, { rejected: true, claimed: true });
+            if (p.userId) await User.updateOne({ _id: p.userId }, { subEnd: new Date(Date.now() - 10 * DAY_MS) });
+        } else {
+            await Payment.updateOne({ _id: p._id }, { reviewed: true });
+        }
+        res.redirect('/api/admin/payments?secret=' + encodeURIComponent(secret));
+    } catch (e) { res.status(500).send('एरर: ' + e.message); }
 });
 // Global Error Handler (Multer/Cloudinary के एरर पकड़ने के लिए)
 app.use((err, req, res, next) => {

@@ -9,6 +9,9 @@ const paymentSchema = new mongoose.Schema({
   claimed: { type: Boolean, default: false },
   email: { type: String, default: '' },
   phone: { type: String, default: '' },
-  paidAt: { type: Date }
+  paidAt: { type: Date },
+  utr: { type: String, default: '' },
+  rejected: { type: Boolean, default: false },
+  reviewed: { type: Boolean, default: false }
 }, { timestamps: true });
 module.exports = mongoose.model('Payment', paymentSchema);

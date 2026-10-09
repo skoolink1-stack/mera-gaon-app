@@ -890,6 +890,7 @@
     now.innerText = now.disabled ? '✅ भुगतान हो गया' : 'भुगतान करें';
     renderPayStatus();
     selectPlan(selectedPlan);
+    restoreUtrBox();
   }
 
   function closePay() { document.getElementById('payScreen').classList.remove('open'); }
@@ -921,51 +922,94 @@
     selectPlan(selectedPlan);
   }
 
+    let upiRef = '', upiLinkLast = '';
+
+  function showUtrBox(d) {
+    document.getElementById('utrBox').style.display = 'block';
+    document.getElementById('upiRefTxt').innerText = d.ref;
+    document.getElementById('upiIdTxt').innerText = d.upiId;
+    document.getElementById('upiAmtTxt').innerText = d.amount;
+    document.getElementById('upiRefTxt2').innerText = 'MG-' + d.ref;
+  }
+
+  function restoreUtrBox() {
+    try {
+      const d = JSON.parse(localStorage.getItem('mg_upi') || 'null');
+      if (!d) return;
+      upiRef = d.ref; upiLinkLast = d.upiLink;
+      showUtrBox(d);
+    } catch (e) {}
+  }
+
   async function startPayment() {
-  const now = document.getElementById('payNowBtn');
-  now.disabled = true;
-  now.innerText = '⏳ कृपया रुकें...';
+    const now = document.getElementById('payNowBtn');
+    now.disabled = true;
+    now.innerText = '⏳ कृपया रुकें...';
 
-  try {
-    const body = { plan: selectedPlan };
-    if (payMode === 'register') {
-      body.email = document.getElementById('regEmail').value;
-      body.phone = document.getElementById('regPhone').value;
-      body.name = document.getElementById('regName').value;
-      saveRegForm();   // Instamojo पर जाने से पहले फॉर्म बचा लो
-    }
+    try {
+      const body = { plan: selectedPlan };
+      if (payMode === 'register') {
+        body.email = document.getElementById('regEmail').value;
+        body.phone = document.getElementById('regPhone').value;
+        body.name = document.getElementById('regName').value;
+        saveRegForm();
+      }
 
-    const res = await authFetch(`${API_BASE}/api/payment/create-order`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-    });
-    const data = await res.json().catch(() => ({ success: false }));
+      const res = await authFetch(`${API_BASE}/api/payment/upi-start`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({ success: false }));
 
-    if (data.success && data.demo) {
-      if (data.mode === 'register') {
-        payToken = data.payToken;
-        try { localStorage.setItem('mg_paytoken', payToken); } catch (e) {}
-        closePay();
-        sendOTP();          // seedha OTP chala jayega
+      if (!data.success) {
+        alert('❌ ' + (data.error || 'पेमेंट शुरू नहीं हो पाया'));
+        resetPayBtn();
         return;
       }
-      subState = data.sub; updateDot(); reminderShown = false;
-      closePay();
-      alert('✅ भुगतान सफल (डेमो)! आपका प्लान चालू है।');
-      return;
-    }
 
-    if (!data.success || !data.paymentUrl) {
-      alert('❌ ' + (data.error || 'पेमेंट शुरू नहीं हो पाया'));
+      upiRef = data.ref;
+      upiLinkLast = data.upiLink;
+      try { localStorage.setItem('mg_upi', JSON.stringify(data)); } catch (e) {}
+      showUtrBox(data);
       resetPayBtn();
-      return;
+      window.location.href = data.upiLink;   // PhonePe/GPay खुलेगा
+    } catch (e) {
+      alert('🚨 सर्वर से कनेक्ट नहीं हो पा रहा: ' + e.message);
+      resetPayBtn();
     }
-    window.location.href = data.paymentUrl;   // Instamojo का पेज खुलेगा
-  } catch (e) {
-    console.error(e);
-    alert('🚨 सर्वर से कनेक्ट नहीं हो पा रहा: ' + e.message);
-    resetPayBtn();
   }
-}
+
+  function reopenUpi() { if (upiLinkLast) window.location.href = upiLinkLast; }
+
+  async function submitUtr() {
+    const utr = document.getElementById('utrInput').value.trim();
+    if (!/^\d{12}$/.test(utr)) { alert('⚠️ 12 अंकों का UTR / Ref नंबर डालें'); return; }
+    if (!upiRef) { alert('पहले "भुगतान करें" दबाएँ'); return; }
+
+    try {
+      const res = await authFetch(`${API_BASE}/api/payment/upi-submit`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ref: upiRef, utr })
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!d.success) { alert('❌ ' + (d.error || 'पुष्टि नहीं हो पाई')); return; }
+
+      try { localStorage.removeItem('mg_upi'); } catch (e) {}
+      upiRef = ''; upiLinkLast = '';
+      document.getElementById('utrInput').value = '';
+      document.getElementById('utrBox').style.display = 'none';
+
+      if (d.mode === 'register') {
+        payToken = d.payToken;
+        try { localStorage.setItem('mg_paytoken', payToken); } catch (e) {}
+        closePay();
+        sendOTP();     // सीधा OTP
+        return;
+      }
+      subState = d.sub; updateDot(); reminderShown = false;
+      closePay();
+      alert('✅ भुगतान दर्ज हो गया! आपका नया प्लान चालू है।');
+    } catch (e) { alert('🚨 सर्वर से कनेक्ट नहीं हो पा रहा।'); }
+  }
 
   function payContinue() {
     if (!payToken) return;
@@ -2588,7 +2632,15 @@ async function handlePaymentReturn() {
     </div>
 
     <button class="submit-btn" id="payNowBtn" onclick="startPayment()" style="margin-top:6px;">भुगतान करें</button>
-    <p style="font-size:12px; color:var(--ink-soft); text-align:center; margin:8px 0 18px;">सुरक्षित भुगतान Instamojo से। हम आपकी कार्ड या बैंक की जानकारी नहीं रखते।</p>
+    <p style="font-size:12px; color:var(--ink-soft); text-align:center; margin:8px 0 18px;">UPI से भुगतान। भुगतान के बाद UTR नंबर डालना होगा।</p>
+
+    <div id="utrBox" style="display:none; background:#FFF8E1; border:1.5px dashed var(--haldi); border-radius:8px; padding:14px; margin-bottom:16px;">
+      <p style="margin:0 0 8px; font-size:13.5px; line-height:1.6;">UPI ऐप में भुगतान करने के बाद, उसकी हिस्ट्री से <b>12 अंकों का UTR / Ref नंबर</b> यहाँ डालें।<br>रेफ़रेंस कोड: <b id="upiRefTxt"></b></p>
+      <p style="margin:0 0 10px; font-size:12px; color:var(--ink-soft); line-height:1.5;">UPI ऐप अपने आप न खुले तो UPI ID <b id="upiIdTxt"></b> पर ₹<span id="upiAmtTxt"></span> भेजें और नोट में <b id="upiRefTxt2"></b> लिखें।</p>
+      <input type="tel" id="utrInput" maxlength="12" placeholder="12 अंकों का UTR नंबर" style="width:100%; padding:11px; border:1.5px solid var(--paper-line); border-radius:6px; font-size:16px; letter-spacing:2px; margin-bottom:10px; box-sizing:border-box;">
+      <button class="submit-btn" onclick="submitUtr()">✅ भुगतान की पुष्टि करें</button>
+      <button onclick="reopenUpi()" style="width:100%; margin-top:8px; background:none; border:1px solid var(--paper-line); padding:10px; border-radius:6px; cursor:pointer;">🔁 UPI ऐप दोबारा खोलें</button>
+    </div>
 
     <button class="submit-btn" id="payContinueBtn" onclick="payContinue()" disabled style="background:var(--haldi); color:var(--ink); opacity:.5;">OTP भेजें</button>
   </div>
