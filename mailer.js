@@ -1,5 +1,10 @@
 const axios = require('axios');
 
+// Render का लिंक अब env से आएगा (न हो तो पुराना चलेगा)
+const BASE_URL = process.env.BASE_URL || 'https://mera-gaon-app.onrender.com';
+// टेस्टिंग वाला रीडायरेक्ट सिर्फ़ production के बाहर काम करेगा, ताकि गलती से असली अधिकारियों की मेल न रुके
+const REDIRECT_TO = process.env.NODE_ENV === 'production' ? null : process.env.MAIL_REDIRECT_TO;
+
 async function sendMail({ to, subject, text, html }) {
     try {
         const body = {
@@ -44,11 +49,11 @@ async function sendComplaintEmail(official, complaint) {
     if (!official || !official.email) return false;
 
     const mediaLinks = (complaint.mediaUrls || [])
-        .map(url => url.startsWith('http') ? url : `https://mera-gaon-app.onrender.com${url}`)
+        .map(url => url.startsWith('http') ? url : `${BASE_URL}${url}`)
         .join('\n');
 
     const ok = await sendMail({
-        to: process.env.MAIL_REDIRECT_TO || official.email,
+        to: REDIRECT_TO || official.email,
         subject: `🔔 नई शिकायत (${complaint.category}) — ${complaint.location.village || complaint.location.district}`,
         text: `
 नमस्ते ${official.name || official.department},

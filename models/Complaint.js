@@ -8,10 +8,11 @@ const complaintSchema = new mongoose.Schema({
     mediaUrls: [{ type: String }],
     status: { type: String, default: 'Pending' }, // Pending, Progress, Resolved, Withdrawn
     supporters: { type: [String], default: [] },
+    reports: { type: [String], default: [] }, // रिपोर्ट करने वाले यूज़र की ids (server.js इसे इस्तेमाल करता है)
     currentLevel: { type: Number, default: 1 }, // 1: सरपंच, 2: BDO, 3: DC
     escalationDeadline: { type: Date },
     location: {
-        district: { type: String, default: 'हिसार' },
+        district: { type: String, required: true },
         block: String,
         village: String
     },
@@ -34,5 +35,10 @@ const complaintSchema = new mongoose.Schema({
 
     createdAt: { type: Date, default: Date.now }
 });
+
+// cron और लिस्टिंग की क्वेरी तेज़ करने के लिए
+complaintSchema.index({ status: 1, escalationDeadline: 1 });
+complaintSchema.index({ 'location.district': 1, 'location.block': 1, 'location.village': 1, createdAt: -1 });
+complaintSchema.index({ userId: 1 });
 
 module.exports = mongoose.model('Complaint', complaintSchema);

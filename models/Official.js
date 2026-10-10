@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const officialSchema = new mongoose.Schema({
+    // level 0 = (अभी इस्तेमाल में नहीं)
     // level 1 = गाँव/ब्लॉक स्तर का विभाग (PHED/PWD/बिजली/सरपंच)
     // level 2 = BDO (सामान्य एस्केलेशन)
     // level 3 = DC/SDM (अंतिम एस्केलेशन)
@@ -18,5 +19,8 @@ const officialSchema = new mongoose.Schema({
     village: { type: String },
     updatedAt: { type: Date, default: Date.now }
 });
+
+// seed-sarpanch.js और findOfficialForComplaint की खोज तेज़ करने के लिए
+officialSchema.index({ level: 1, department: 1, district: 1, block: 1, village: 1 });
 
 module.exports = mongoose.model('Official', officialSchema);
