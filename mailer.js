@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 // Render का लिंक अब env से आएगा (न हो तो पुराना चलेगा)
-const BASE_URL = process.env.BASE_URL || 'https://mera-gaon-app.onrender.com';
+const BASE_URL = process.env.BASE_URL || 'https://meragaon.site';
 // टेस्टिंग वाला रीडायरेक्ट सिर्फ़ production के बाहर काम करेगा, ताकि गलती से असली अधिकारियों की मेल न रुके
 const REDIRECT_TO = process.env.NODE_ENV === 'production' ? null : process.env.MAIL_REDIRECT_TO;
 
