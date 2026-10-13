@@ -1,4 +1,5 @@
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -24,7 +25,7 @@ app.use(express.urlencoded({ extended: false }));
 app.set('trust proxy', 1);
 
 app.get('/health', (req, res) => res.send('ok'));
-app.use(cors({ origin: ['https://mera-gaon-app.vercel.app', 'http://localhost:5500', 'http://127.0.0.1:5500'] }));
+app.use(cors({ origin: ['https://mera-gaon-app.vercel.app', 'https://meragaon.site', 'https://www.meragaon.site', 'http://localhost:5500', 'http://127.0.0.1:5500'] }));
 const rateLimit = require('express-rate-limit');
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,

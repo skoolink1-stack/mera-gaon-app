@@ -1108,7 +1108,7 @@ async function confirmWithdraw(id) {
   const reasonValue = selectedRadio ? selectedRadio.value : 'mistake';
 
   try {
-    const res = await fetch(`https://meragaon.site/api/complaints/${id}/withdraw`, {
+    const res = await fetch(`https://mera-gaon-app.onrender.com/api/complaints/${id}/withdraw`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1261,7 +1261,7 @@ function renderComplaints(complaints) {
     }
 
     try {
-      const response = await fetch('https://meragaon.site/api/auth/login', {
+      const response = await fetch('https://mera-gaon-app.onrender.com/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, password: pwd })
@@ -1538,7 +1538,7 @@ async function toggleSupport(btn, complaintId) {
 
       // अगर MongoDB ID है तो सर्वर से डेटा लें
       if (id && id.length === 24) {
-        const res = await authFetch(`https://meragaon.site/api/complaints/${id}`);
+        const res = await authFetch(`https://mera-gaon-app.onrender.com/api/complaints/${id}`);
         if (res.ok) c = await res.json();
       }
 
@@ -1557,7 +1557,7 @@ async function toggleSupport(btn, complaintId) {
     } 
     // 2. अगर सीधी ID पास हुई है
     else if (typeof elementOrId === 'string') {
-      const res = await authFetch(`https://meragaon.site/api/complaints/${elementOrId}`);
+      const res = await authFetch(`https://mera-gaon-app.onrender.com/api/complaints/${elementOrId}`);
       if (res.ok) c = await res.json();
     }
 
@@ -1573,7 +1573,7 @@ async function toggleSupport(btn, complaintId) {
 
     let mediaHtml = '';
     if (mediaList.length > 0) {
-      const fullUrls = mediaList.map(url => url.startsWith('http') ? url : `https://meragaon.site${url}`);
+      const fullUrls = mediaList.map(url => url.startsWith('http') ? url : `https://mera-gaon-app.onrender.com${url}`);
       mediaHtml = `
         <div style="position:relative; margin:-20px -20px 15px -20px;">
           <div id="mediaCarousel" onscroll="updateMediaCounter(this)" style="display:flex; overflow-x:auto; scroll-snap-type:x mandatory; background:#1A1A1A; height:240px; -webkit-overflow-scrolling:touch;">
@@ -1824,7 +1824,7 @@ function openConfirmModal(id) {
 }
 
 async function submitConfirmation(resolved) {
-  const res = await authFetch(`https://meragaon.site/api/complaints/${activeConfirmComplaintId}/confirm-resolution`, {
+  const res = await authFetch(`https://mera-gaon-app.onrender.com/api/complaints/${activeConfirmComplaintId}/confirm-resolution`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ resolved })
@@ -1834,7 +1834,7 @@ async function submitConfirmation(resolved) {
   document.getElementById('confirmModal').style.display = 'none';
   loadComplaintsFromDB();
 }
-const API_BASE = "https://meragaon.site";   // अपना Render लिंक (अलग हो तो वही डालना)
+const API_BASE = "https://mera-gaon-app.onrender.com";   // अपना Render लिंक (अलग हो तो वही डालना)
 let sarpanchFormSource = 'prompt';
 
 async function loadVillageStats() {
@@ -1959,7 +1959,7 @@ async function submitWithdrawal(id) {
   const reasonValue = selectedRadio ? selectedRadio.value : 'mistake';
 
   try {
-    const res = await authFetch(`https://meragaon.site/api/complaints/${complaintId}/withdraw`, {
+    const res = await authFetch(`https://mera-gaon-app.onrender.com/api/complaints/${complaintId}/withdraw`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
