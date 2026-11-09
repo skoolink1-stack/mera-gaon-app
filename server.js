@@ -14,6 +14,7 @@ const VillageInfo = require('./models/VillageInfo');
 const bcrypt = require('bcrypt');
 const { sendComplaintEmail, sendAdminVerificationEmail, sendOtpEmail, sendSubReminderEmail } = require('./mailer');
 const User = require('./models/User');
+const { notifySarpanch } = require('./whatsapp');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -273,6 +274,7 @@ app.post('/api/auth/register', upload.single('idProof'), async (req, res) => {
         });
 
         await newUser.save();
+        if (isCitizen) notifySarpanch(newUser).catch(e => console.log('WA error:', e.message));
         if (paid) await Payment.updateOne({ _id: paid._id }, { userId: String(newUser._id) });
         if (!isVerified) {
             const approveUrl = `${process.env.BACKEND_URL}/api/admin/verify-official/${newUser._id}?action=approve&secret=${process.env.ADMIN_SECRET}`;
@@ -328,6 +330,7 @@ app.post('/api/auth/login', async (req, res) => {
         if(!isMatch) return res.status(400).json({ success: false, error: 'गलत नंबर या पासवर्ड!' });
         
         if(!user.isVerified) return res.status(403).json({ success: false, error: 'आपका अधिकारी अकाउंट अभी पेंडिंग है। टीम इसे वेरीफाई कर रही है।' });
+        if (user.role === 'citizen') notifySarpanch(user).catch(e => console.log('WA error:', e.message));
 
         const safeUser = user.toObject();
         delete safeUser.password;
