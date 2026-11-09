@@ -1,0 +1,123 @@
+﻿approve,confidence,district_old,block_old,village_old,district_new,block_new,village_new,name,phone,why
+,LOW,Ambala,Ambala-I,Balapur,Ambala,Ambala-I,Bichpari,Shiv Kumar,9992718178,स्पेलिंग में थोड़ा फ़र्क
+,MED,Ambala,Ambala-I,Sakrahon,Ambala,Ambala-I,Sakhroan,Chanpreet Singh,9996669481,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Ambala,Ambala-Ii,Rolan,Ambala,Ambala-II,Rawlan,Hardeep Kaur,7357355305,स्पेलिंग में थोड़ा फ़र्क
+,MED,Ambala,Barara,Bikkampur,Ambala,Barara,Bekonpur,Amrit Pal Kaur,7652837517,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Ambala,Naraingarh,Fatehpur-80,Ambala,Saha,Fatehpur,Sunita Devi,9466718668,दूसरे ब्लॉक में वही नाम
+,LOW,Ambala,Saha,Nurd,Ambala,Saha,Nurhad,Dilbag Singh,9466765146,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Bhiwani,Loharu,Baralu,Bhiwani,Loharu,Brahlu,Kusum,9996166115,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Bhiwani,Loharu,Dhani Rahimpur,Bhiwani,Loharu,Rahimpur,Rakesh Sharma,9813207774,नाम का हिस्सा मेल
+,LOW,Bhiwani,Loharu,Dhani Toda,Bhiwani,Loharu,Jhanjhra Toda,Sumitra,9050988011,नाम का हिस्सा मेल
+,MED,Bhiwani,Loharu,Jhanjhara Hasanpur,Bhiwani,Loharu,Hasanpur,Suman,9813816050,नाम का हिस्सा मेल
+,MED,Faridabad,Faridabad,Alipur-Shikargah,Faridabad,Faridabad,Shikargah,Sunil Kumar,9911023418,नाम का हिस्सा मेल
+,MED,Faridabad,Tigaon,Kabulpur Patti Parvaris,Faridabad,Tigaon,Kabulpur Khadar Patti Parwaris,Preeti Nagar,9599330606,नाम का हिस्सा मेल
+,LOW,Fatehabad,Bhuna,Dhani Sanchla,Fatehabad,Bhuna,Sanchla,Rajender Singh,8168371684,नाम का हिस्सा मेल
+,LOW,Fatehabad,Fatehabad,Basti Bhiwan,Fatehabad,Fatehabad,Bhiwan Basti,Sulakhan Singh,8683071810,नाम का हिस्सा मेल
+,LOW,Fatehabad,Fatehabad,Dhani Binja Lamba,Fatehabad,Fatehabad,Binja Lamba,Ramniwash,9992312575,नाम का हिस्सा मेल
+,LOW,Fatehabad,Fatehabad,Khajuri Jatti,Fatehabad,Nagpur,Khajuri Jatti,Sita Ram,7770000029,दूसरे ब्लॉक में वही नाम
+,LOW,Hisar,Hansi-I,Sainipura,Hansi,Hansi-I,Sekhpura,Suman Devi,9255570259,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Hisar,Barwala,Bugana,Hisar,Barwala,Bhagana,Usha Rani,9050838185,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Hisar,Hisar-I,Bhagana,Hisar,Hisar-I,Bugana,Monu,9812600664,स्पेलिंग में थोड़ा फ़र्क
+,MED,Hisar,Hisar-I,Kaimari,Hisar,Hisar-I,Kamri,Dayawanti,9812070069,उच्चारण एक जैसा
+,LOW,Hisar,Hisar-I,Saharwa,Hisar,Hisar-I,Sharwa,Neelam,9991132834,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Jhajjar,Badli,Bupania,Jhajjar,Badli,Bhupnia,Sikha,9896566625,स्पेलिंग में थोड़ा फ़र्क
+,MED,Jhajjar,Badli,Kukrola *,Jhajjar,Badli,Munirpur Kukrola,Madhu Bala,9671555609,नाम का हिस्सा मेल
+,MED,Jhajjar,Beri,Bhambhewa,Jhajjar,Beri,Bahmbeva,Preeti Devi,8059625424,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Jhajjar,Beri,Mohmadpur Majara,Jhajjar,Badli,Mohamdpur Majra,Yogita Yadav,8398918902,दूसरे ब्लॉक में वही नाम
+,MED,Jhajjar,Jhajjar,Bakhtawarpur Raiya,Jhajjar,Jhajjar,Raiya Urf Bakhtawarpur,Chander,9813140233,नाम का हिस्सा मेल
+,MED,Jhajjar,Jhajjar,Silani Kesho,Jhajjar,Jhajjar,Silani Pana Kesho,Parmila,9812545860,नाम का हिस्सा मेल
+,MED,Jhajjar,Jhajjar,Silani Zalim,Jhajjar,Jhajjar,Silani Pana Jalim,Mahabir,9518275959,नाम का हिस्सा मेल
+,MED,Jind,Jind,Pindara,Jind,Jind,Pandu Pindara,Neelam Devi,9416087083,नाम का हिस्सा मेल
+,MED,Jind,Julana,Bura Dehar,Jind,Julana,Bhura Daher,Pawan Kumar,9097233000,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Jind,Julana,Deverar,Jind,Julana,Devrad,Sunil Kumari,9466644401,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Jind,Julana,Meharera,Jind,Julana,Mehrada,Maya,9416606300,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Jind,Narwana,Sinser,Jind,Narwana,Sissar,Kamlesh Devi,9416108044,स्पेलिंग में थोड़ा फ़र्क
+,MED,Jind,Uchana,Bhonsla,Jind,Uchana,Bhosala,Nasib,9992607161,स्पेलिंग में थोड़ा फ़र्क
+,MED,Jind,Uchana,Surbrah,Jind,Uchana,Surbara,Ramniwas,9813331245,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Jind,Ujhana,Rasidan,Jind,Ujhana,Rasidha,Harpal Singh,8571872303,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Kaithal,Dhand,Bandrana,Kaithal,Pundri,Bandrana,Raj Kumar,7056340253,दूसरे ब्लॉक में वही नाम
+,LOW,Kaithal,Dhand,Salimpur Madud,Kaithal,Dhand,Salempur Mehmud,Rajbir,9467269561,स्पेलिंग में फ़र्क
+,MED,Kaithal,Dhand,Sangroli,Kaithal,Dhand,Songri,Pinki,9068844500,स्पेलिंग में थोड़ा फ़र्क
+,MED,Kaithal,Guhla,Kharaudi,Kaithal,Guhla,Khaordi,Karamjeet Singh,9996627449,उच्चारण एक जैसा
+,LOW,Kaithal,Guhla,Sarola,Kaithal,Guhla,Sarawla,Rupinder Kaur,9356501497,स्पेलिंग में थोड़ा फ़र्क
+,MED,Kaithal,Guhla,Seon Majra,Kaithal,Guhla,Sinhu Majra,Baljinder Singh,9996821910,स्पेलिंग में थोड़ा फ़र्क
+,MED,Kaithal,Kaithal,Baba Ladana,Kaithal,Kaithal,Ladana Baba,Gurnam Singh,9467619061,नाम का हिस्सा मेल
+,MED,Kaithal,Kaithal,Deohra,Kaithal,Kaithal,Dheora,Vikram Singh,9992224244,उच्चारण एक जैसा
+,LOW,Kaithal,Kaithal,Saran,Kaithal,Kaithal,Saharan,Sudesh Kumari,9813327747,स्पेलिंग में थोड़ा फ़र्क
+,MED,Kaithal,Kalayat,Badsikri Khurd,Kaithal,Kalayat,Khurd,Satbir Singh,8685014008,नाम का हिस्सा मेल
+,MED,Kaithal,Kalayat,Balu Bidhan,Kaithal,Kalayat,Balu,Meena Rani,9671450006,नाम का हिस्सा मेल
+,LOW,Kaithal,Pundri,Badnara,Kaithal,Dhand,Badnara,Savita Sharma,8053083377,दूसरे ब्लॉक में वही नाम
+,MED,Kaithal,Rajound,Songri,Kaithal,Rajound,Sangroli,Suresh,9068930857,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Kaithal,Siwan,Pishol,Kaithal,Siwan,Passawal,Karnail Singh,9991542787,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Karnal,Assandh,Popra,Karnal,Assandh,Papran,Rahul Kumar,7551111114,स्पेलिंग में थोड़ा फ़र्क
+,MED,Karnal,Assandh,Rahra,Karnal,Assandh,Rihara,Jyoti Rani,9468009597,उच्चारण एक जैसा
+,LOW,Karnal,Chirao,Augand,Karnal,Chirao,Agondh,Maina Devi,8053713009,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Karnal,Chirao,Behlolpur,Karnal,Gharaunda,Bahlolpur,Gurvinder Kaur,9813202358,दूसरे ब्लॉक में वही नाम
+,MED,Karnal,Gharaunda (part),Kairwali,Karnal,Gharaunda,Keharwali,Bharti Devi,9896505808,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Karnal,Gharaunda (part),Kohand,Karnal,Gharaunda,Kond,Suman,9728512900,स्पेलिंग में थोड़ा फ़र्क
+,MED,Karnal,Gharaunda (part),Upli,Karnal,Gharaunda,Upll,Vinod Kumar,7988221039,नाम एक जैसा
+,LOW,Karnal,Karnal,Budhanpur,Karnal,Chirao,Budhanpur,Ramjawari,9991358262,दूसरे ब्लॉक में वही नाम
+,MED,Karnal,Karnal,Dilawara-Andhera,Karnal,Karnal,Andhera (96/1),Rachna,8053435028,नाम का हिस्सा मेल
+,MED,Karnal,Kunjpura,Chaura Khalsa,Karnal,Kunjpura,Chaura,Mandeep Kaur,9467477023,नाम का हिस्सा मेल
+,LOW,Karnal,Kunjpura,Jarouli,Karnal,Kunjpura,Jarwali,Neesha Rani,9991583817,स्पेलिंग में थोड़ा फ़र्क
+,MED,Karnal,Munak,Alawla,Karnal,Munak,Alwal,Ajit Singh,9991205270,उच्चारण एक जैसा
+,MED,Karnal,Munak,Manpura,Karnal,Munak,Munak Kapro,Rekha Devi,9729724000,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Karnal,Munak,Shekhupura,Karnal,Indri,Shekhupura,Rupinder Kaur,9996199555,दूसरे ब्लॉक में वही नाम
+,MED,Karnal,Nilokheri,Abla Jagir,Karnal,Nilokheri,Abla,Tejpal,9050550816,नाम का हिस्सा मेल
+,MED,Karnal,Nilokheri,Abli Khalsa,Karnal,Nilokheri,Abli,Baljeet Singh,8307727008,नाम का हिस्सा मेल
+,LOW,Karnal,Nilokheri,Bodshyam,Karnal,Nilokheri,Bursham,Rupinder Kaur,9896199811,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Karnal,Nilokheri,Khawaja Ahmedpur,Karnal,Nilokheri,Khalsa Ahmadpur,Bal Kishan,8059198251,स्पेलिंग में फ़र्क
+,LOW,Karnal,Nissing,Fatehgarh,Karnal,Indri,Fatehgarh,Amrit Pal Singh,8572000252,दूसरे ब्लॉक में वही नाम
+,MED,Kurukshetra,Babain,Mercheri,Kurukshetra,Babain,Mirechaheri,Gurmeet Singh,7988201482,स्पेलिंग में थोड़ा फ़र्क
+,MED,Kurukshetra,Ismailabad,Chammu Kalan,Kurukshetra,Ismailabad,Chammu,D C Marwaha,9996630808,नाम का हिस्सा मेल
+,LOW,Kurukshetra,Ismailabad,Madadoo,Kurukshetra,Ismailabad,Madhado,Satish Singh,9991429527,स्पेलिंग में थोड़ा फ़र्क
+,MED,Kurukshetra,Pehowa,Arnaicha,Kurukshetra,Pehowa,Arnecha,Ram Lal,9813373606,उच्चारण एक जैसा
+,MED,Kurukshetra,Pehowa,Harigarh Bhorakh,Kurukshetra,Pehowa,Bhorak,Kamal Kumar,9729914443,नाम का हिस्सा मेल
+,MED,Kurukshetra,Pehowa,Tyukar,Kurukshetra,Pehowa,Teokar,Charanjeet Kaur,7015849079,उच्चारण एक जैसा
+,MED,Kurukshetra,Shahbad,Madudan,Kurukshetra,Shahbad,Muhdudana,Ramesh Chand,8607242371,स्पेलिंग में थोड़ा फ़र्क
+,MED,Kurukshetra,Thanesar,Bachgaon,Kurukshetra,Thanesar,Bichgawan,Saini Jaswinder Singh,9068232344,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Kurukshetra,Thanesar,Jyotisar,Kurukshetra,Thanesar,Josar,Neha,9467421166,स्पेलिंग में थोड़ा फ़र्क
+,MED,Mahendragarh,Ateli Nangal,Bhori,Mahendragarh,Ateli Nangal,Bohari,Pardeep Kumar,9671138833,उच्चारण एक जैसा
+,MED,Mahendragarh,Kanina,Kaimla,Mahendragarh,Kanina,Kemla,Dimpal Devi,9588783664,उच्चारण एक जैसा
+,MED,Mahendragarh,Kanina,Sundarh,Mahendragarh,Kanina,Sundrahq,Kabul Bai,9416093046,स्पेलिंग में थोड़ा फ़र्क
+,MED,Mahendragarh,Nangal Chaudhry,Ikbalpur Nagali,Mahendragarh,Nangal,Iqbalpur,Anju,9468416547,नाम का हिस्सा मेल
+,MED,Nuh,Ferozepur Jhirka,Mohammad Bass (Pol),Nuh,Ferozepur Jhirka,Mohedbass,Ruksina,8930491503,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Nuh,Ferozepur Jhirka,Raniyala F.Pur,Nuh,Ferozepur Jhirka,Ranyala Ferozepur,Mohd Sabir Ali,9416113559,स्पेलिंग में फ़र्क
+,LOW,Nuh,Pingwan,Rehpua,Nuh,Pingwan,Rahepwa,Mohd Imran Khan,9813120150,स्पेलिंग में थोड़ा फ़र्क
+,MED,Nuh,Punahana,Naiwana,Nuh,Punahana,Newana,Gaura,9813454232,उच्चारण एक जैसा
+,LOW,Nuh,Punahana,Sunheda,Nuh,Punahana,Sunehra,Mohd Haroon,9254570786,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Palwal,Badoli,Nanglia,Palwal,Badoli,Nagaliya,Reena Rani,8295461813,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Panchkula,Barwala,Bataur,Panchkula,Barwala,Batawar,Prem Lata,9215720024,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Panchkula,Barwala,Rehore,Panchkula,Barwala,Rehawar,Neha,9468293979,स्पेलिंग में थोड़ा फ़र्क
+,MED,Panchkula,Barwala,Sunderpur,Panchkula,Barwala,Raipur Alias Sunderpur,Preeti,7056123935,नाम का हिस्सा मेल
+,MED,Panchkula,Pinjore,Bakshiwala,Panchkula,Pinjore,Miranpur Bakshiwala,Sukhdev Singh,8529390005,नाम का हिस्सा मेल
+,MED,Panchkula,Pinjore,Burj Kotian,Panchkula,Pinjore,Kotian,Kabal Singh,9996094527,नाम का हिस्सा मेल
+,LOW,Panchkula,Pinjore,Chicken,Panchkula,Pinjore,Chikan,Gurdev Singh,9991759133,स्पेलिंग में थोड़ा फ़र्क
+,MED,Panchkula,Pinjore,Khokhra,Panchkula,Pinjore,Khokhra Urf Theppal,Urmila,9816450750,नाम का हिस्सा मेल
+,LOW,Panipat,Madlauda,Bhadar,Panipat,Madlauda,Bhadaud,Suman,7015832836,स्पेलिंग में थोड़ा फ़र्क
+,MED,Panipat,Samalkha,Jaurasi Khalsa,Panipat,Samalkha,Jaurasi Surf Khaalsa,Krishan Kumar,9896128567,नाम का हिस्सा मेल
+,MED,Rewari,Bawal,Behrampur Bharangi,Rewari,Bawal,Bharirampur Bharangi,Poonam Bai,9991634734,स्पेलिंग में थोड़ा फ़र्क
+,MED,Rewari,Dahina,Kheri Ramgarh,Rewari,Dahina,Kheri,Abhey Singh,8930247171,नाम का हिस्सा मेल
+,MED,Rewari,Dharuhera,Rajpura Alamgirpur,Rewari,Dharuhera,Alamgirpur,Maina Balmik,9728064346,नाम का हिस्सा मेल
+,MED,Rewari,Jatusana,Dohkia,Rewari,Jatusana,Dhokiya,Manisha Kumari,9466873116,उच्चारण एक जैसा
+,MED,Rewari,Khol At Rewari,Pranpura,Rewari,Khol At Rewari,Gopalpura Urf Pranpura,Renubala,9467531816,नाम का हिस्सा मेल
+,MED,Rewari,Rewari,Jant Sairwas,Rewari,Rewari,Jaat Sharywas,Azad Singh,9991728263,स्पेलिंग में थोड़ा फ़र्क
+,MED,Rohtak,Kalanaur,Garnawathi,Rohtak,Kalanaur,Garnauthi,Satyavir Singh,9992255322,स्पेलिंग में थोड़ा फ़र्क
+,MED,Rohtak,Rohtak,Sarai Ahamd Nasirpur,Rohtak,Rohtak,Nasirpur,Raja Ram,9518842553,नाम का हिस्सा मेल
+,MED,Sirsa,Baragudha,Bhudhabhana,Sirsa,Baragudha,Budah Bhana,Happy Bala,7015045004,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Sirsa,Baragudha,Malri,Sirsa,Baragudha,Malhari,Manpreet Kaur,9813682785,स्पेलिंग में थोड़ा फ़र्क
+,MED,Sirsa,Nathusari Chopta,Rupana Khurd,Sirsa,Nathusari,Rupana Urf,Ravita,9896822880,नाम का हिस्सा मेल
+,MED,Sirsa,Sirsa,Fatehpur Vaidwala,Sirsa,Sirsa,Vaidwala,Deep Singh,8607120005,नाम का हिस्सा मेल
+,MED,Sonipat,Gohana,Bali Brahmnan,Sonipat,Gohana,Bali,Jyoti,9725278132,नाम का हिस्सा मेल
+,LOW,Sonipat,Mundlana,Mehmudpur Maan,Sonipat,Mundlana,Mahmudpur,Rajpati,9896780498,स्पेलिंग में फ़र्क
+,LOW,Sonipat,Sonipat,Bhathgoan Dugran,Sonipat,Sonipat,Bhatgaon Dungran,Priyanka,9813867337,स्पेलिंग में फ़र्क
+,LOW,Sonipat,Sonipat,Jahri,Sonipat,Sonipat,Jawahri,Vinod,9813816060,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Yamunanagar,Bilaspur,Nagli-32,Yamunanagar,Radaur,Nagli,Aaisha,7015364384,दूसरे ब्लॉक में वही नाम
+,MED,Yamunanagar,Chhachhrauli,Ramgarh Urf Arjun Majra,Yamunanagar,Chhachhrauli,Ramgarh Alias Arjun Majra,Shamsher Singh,9991664117,नाम का हिस्सा मेल
+,LOW,Yamunanagar,Jagadhri,Naya Gaon,Yamunanagar,Jagadhri,Nai Gawan,Amit Kumar,9896208246,स्पेलिंग में थोड़ा फ़र्क
+,MED,Yamunanagar,Partap Nagar,Bagpat,Yamunanagar,Partap Nagar,Phangera Bhangeri Bagpat,Nusrat,9857274786,नाम का हिस्सा मेल
+,MED,Yamunanagar,Partap Nagar,Jaidhar,Yamunanagar,Partap Nagar,Tapu Jaidhar,Shabana Aajami,9813850817,नाम का हिस्सा मेल
+,MED,Yamunanagar,Radaur,Dholi,Yamunanagar,Radaur,Dohli,Rajneesh,9812430415,उच्चारण एक जैसा
+,MED,Yamunanagar,Radaur,Kanjnu,Yamunanagar,Radaur,Kanjnon,Rimpy,9306694138,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Yamunanagar,Sadaura (part),Nanri,Yamunanagar,Sadaura (Part),Nanheri,Kanwar Jahan,8168274314,स्पेलिंग में थोड़ा फ़र्क
+,LOW,Yamunanagar,Sadaura (part),Naushera,Yamunanagar,Sadaura (Part),Naushahra,Vishal,9817184714,स्पेलिंग में थोड़ा फ़र्क
