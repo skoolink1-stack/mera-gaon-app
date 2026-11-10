@@ -1021,6 +1021,23 @@
       resetPayBtn();
     }
   }
+  function showOfflineUpiBox() {
+  const now = document.getElementById('payNowBtn');
+  now.disabled = true;
+  now.style.display = 'none'; // Button chhupa dega
+  document.getElementById('utrNotice').style.display = 'none'; // Warning chhupa dega
+  
+  // Amount set karega UPI Copy box mein
+  const amt = selectedPlan === 'yearly' ? '220' : '20';
+  document.getElementById('upiAmtTxt').innerText = amt;
+  
+  // Random reference number banayega
+  const randomRef = Math.floor(100000 + Math.random() * 900000);
+  document.getElementById('upiRefTxt2').innerText = 'MG-' + randomRef;
+  
+  // Seedha copy wala box dikhayega
+  document.getElementById('utrBox').style.display = 'block';
+}
 
   // UPI Copy Function
 function copyUPI() {
@@ -2726,7 +2743,7 @@ async function handlePaymentReturn() {
       </label>
     </div>
 
-    <button class="submit-btn" id="payNowBtn" onclick="startPayment()" style="margin-top:6px;">भुगतान करें</button>
+    <button class="submit-btn" id="payNowBtn" onclick="showOfflineUpiBox()" style="margin-top:6px;">भुगतान करें</button>
     <p style="font-size:12px; color:var(--ink-soft); text-align:center; margin:8px 0 18px;">UPI से भुगतान। भुगतान के बाद UTR नंबर डालना होगा।</p>
 
     <div id="utrBox" style="display:none; background:#FFF8E1; border:1.5px dashed var(--haldi); border-radius:8px; padding:14px; margin-bottom:16px;">
