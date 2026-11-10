@@ -5,6 +5,7 @@ const Official = require('./models/Official');
 const User = require('./models/User');
 
 const DAY_MS = 86400000;
+const dbg = (...a) => { if (process.env.WA_DEBUG === 'true') console.log('📲 WA debug:', ...a); };
 const cap = s => String(s || '').toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
 const clean = s => cap(String(s || '').replace(/\(.*?\)/g, '').replace(/\s+/g, ' ').trim());
 const istHour = () => parseInt(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }), 10) % 24;
@@ -28,14 +29,15 @@ async function sendTemplate(to, name, village) {
 }
 
 async function notifySarpanch(user) {
-    if (process.env.WA_ENABLED !== 'true') return;
-    if (!user || user.role !== 'citizen') return;
-    if (!process.env.WA_PHONE_ID || !process.env.WA_TOKEN) return;
+    dbg('बुलाया गया:', user && user.role, user && user.village);
+    if (process.env.WA_ENABLED !== 'true') return dbg('रुका: WA_ENABLED != true');
+    if (!user || user.role !== 'citizen') return dbg('रुका: यूज़र नागरिक नहीं है');
+    if (!process.env.WA_PHONE_ID || !process.env.WA_TOKEN) return dbg('रुका: WA_PHONE_ID या WA_TOKEN खाली');
     const { district, block, village } = user;
-    if (!district || !block || !village) return;
+    if (!district || !block || !village) return dbg('रुका: यूज़र का ज़िला/ब्लॉक/गाँव खाली');
 
     // सरपंच पहले से ऐप पर जुड़ चुका है तो संदेश की ज़रूरत नहीं
-    if (await User.exists({ role: 'सरपंच', isVerified: true, district, block, village })) return;
+    if (await User.exists({ role: 'सरपंच', isVerified: true, district, block, village })) return dbg('रुका: इस गाँव का सरपंच पहले से ऐप पर जुड़ा है');
 
     const where = { level: 1, department: 'पंचायत', district, block, village };
     const redirect = String(process.env.WA_REDIRECT_TO || '').replace(/\D/g, '');
@@ -52,7 +54,7 @@ async function notifySarpanch(user) {
 
     // रात में सरपंच को संदेश नहीं; अगला नागरिक दिन में जुड़ेगा/लॉगिन करेगा तो चला जाएगा
     const h = istHour();
-    if (h < 8 || h >= 21) return;
+    if (h < 8 || h >= 21) return dbg('रुका: अभी रात का समय है (भारत में 8 से 21 बजे के बीच ही जाता है), घंटा =', h);
 
     // एक ही बार भेजने के लिए "दावा" (atomic) — दो लोग एक साथ जुड़ें तब भी सिर्फ़ एक संदेश
     const now = new Date();
@@ -69,7 +71,7 @@ async function notifySarpanch(user) {
         { returnDocument: 'after' }
     );
     const o = claim && claim.value !== undefined ? claim.value : claim;   // driver के अलग-अलग version के लिए
-    if (!o) return;   // पहले भेजा जा चुका / सरपंच का नंबर नहीं
+    if (!o) return dbg('रुका: या तो इस गाँव के सरपंच को पहले भेजा जा चुका, या रिकॉर्ड/नंबर नहीं मिला:', district, block, village);
 
     const res = await sendTemplate('91' + o.phone, clean(o.name) || 'सरपंच', clean(o.village));
     await Official.collection.updateOne({ _id: o._id }, {

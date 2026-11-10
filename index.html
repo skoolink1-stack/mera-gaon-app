@@ -395,6 +395,13 @@
 .plan-card.sel{border-color:var(--neem);background:#EEF3EA;}
 .plan-card .pr{font-family:'Noto Serif Devanagari',serif;font-size:22px;font-weight:700;color:var(--mitti);}
 .plan-card .sv{font-size:12px;color:var(--neem-dark);font-weight:700;}
+/* --- UPI Copy System CSS --- */
+.upi-container { text-align: center; margin: 15px auto; max-width: 300px; font-family: 'Hind', sans-serif; }
+.upi-label { font-size: 14px; color: #555; margin-bottom: 5px; font-weight: 600; }
+.upi-box { display: flex; align-items: center; justify-content: space-between; background-color: #f9f9f9; border: 1.5px solid var(--paper-line); padding: 8px 12px; border-radius: 8px; }
+#upi-id { font-weight: bold; font-size: 15px; color: #333; letter-spacing: 0.5px; }
+#copy-btn { background-color: var(--neem); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; transition: 0.3s; font-weight: bold; }
+#copy-btn:hover { background-color: var(--neem-dark); }
 
 </style>
 </head>
@@ -1014,6 +1021,28 @@
       resetPayBtn();
     }
   }
+
+  // UPI Copy Function
+function copyUPI() {
+  var upiText = document.getElementById("upi-id").innerText;
+  navigator.clipboard.writeText(upiText).then(function() {
+    var copyBtn = document.getElementById("copy-btn");
+    var copyMsg = document.getElementById("copy-msg");
+    
+    copyBtn.innerText = "Copied!";
+    copyBtn.style.backgroundColor = "#4CAF50";
+    copyMsg.style.display = "block";
+
+    setTimeout(function() {
+      copyBtn.innerText = "Copy";
+      copyBtn.style.backgroundColor = "var(--neem)";
+      copyMsg.style.display = "none";
+    }, 4000);
+  }).catch(function(err) {
+    console.error('Could not copy text: ', err);
+    alert('कॉपी नहीं हो पाया, कृपया खुद से टाइप करें।');
+  });
+}
 
   function reopenUpi() { if (upiLinkLast) window.location.href = upiLinkLast; }
 
@@ -2701,11 +2730,22 @@ async function handlePaymentReturn() {
     <p style="font-size:12px; color:var(--ink-soft); text-align:center; margin:8px 0 18px;">UPI से भुगतान। भुगतान के बाद UTR नंबर डालना होगा।</p>
 
     <div id="utrBox" style="display:none; background:#FFF8E1; border:1.5px dashed var(--haldi); border-radius:8px; padding:14px; margin-bottom:16px;">
-      <p style="margin:0 0 8px; font-size:13.5px; line-height:1.6;">UPI ऐप में भुगतान करने के बाद, उसकी हिस्ट्री से <b>12 अंकों का UTR / Ref नंबर</b> यहाँ डालें।<br>रेफ़रेंस कोड: <b id="upiRefTxt"></b></p>
-      <p style="margin:0 0 10px; font-size:12px; color:var(--ink-soft); line-height:1.5;">UPI ऐप अपने आप न खुले तो UPI ID <b id="upiIdTxt"></b> पर ₹<span id="upiAmtTxt"></span> भेजें और नोट में <b id="upiRefTxt2"></b> लिखें।</p>
+      <!-- QR Code and Copy UPI Button System -->
+      <p style="margin:0 0 8px; font-size:13px; text-align:center; color:var(--ink-soft);">सुरक्षा कारणों से, कृपया नीचे दी गई ID को कॉपी करके अपने PhonePe, GPay या Paytm में मैनुअली पेस्ट करें।</p>
+  
+      <div class="upi-container">
+        <p class="upi-label">हमारी UPI ID:</p>
+        <div class="upi-box">
+          <span id="upi-id">9896339174-2@ybl</span>
+          <button onclick="copyUPI()" id="copy-btn">Copy</button>
+        </div>
+        <p id="copy-msg" style="display:none; color:#2E7D32; font-size:12px; margin-top:6px; font-weight:bold;">✅ ID कॉपी हो गई! अब ऐप में जाकर ₹<span id="upiAmtTxt"></span> भेजें।</p>
+      </div>
+
+      <p style="margin:8px 0 12px; font-size:13.5px; line-height:1.6; text-align:center;">भुगतान के बाद <b>12 अंकों का UTR / Ref नंबर</b> यहाँ डालें।<br>मैसेज (नोट): <b id="upiRefTxt2"></b></p>
+  
       <input type="tel" id="utrInput" maxlength="12" placeholder="12 अंकों का UTR नंबर" style="width:100%; padding:11px; border:1.5px solid var(--paper-line); border-radius:6px; font-size:16px; letter-spacing:2px; margin-bottom:10px; box-sizing:border-box;">
       <button class="submit-btn" onclick="submitUtr()">✅ भुगतान की पुष्टि करें</button>
-      <button onclick="reopenUpi()" style="width:100%; margin-top:8px; background:none; border:1px solid var(--paper-line); padding:10px; border-radius:6px; cursor:pointer;">🔁 UPI ऐप दोबारा खोलें</button>
     </div>
 
     <button class="submit-btn" id="payContinueBtn" onclick="payContinue()" disabled style="background:var(--haldi); color:var(--ink); opacity:.5;">OTP भेजें</button>
