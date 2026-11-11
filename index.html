@@ -986,57 +986,48 @@
   }
 
   async function startPayment() {
-    const now = document.getElementById('payNowBtn');
-    now.disabled = true;
-    now.innerText = '⏳ कृपया रुकें...';
-
-    try {
-      const body = { plan: selectedPlan };
-      if (payMode === 'register') {
-        body.email = document.getElementById('regEmail').value;
-        body.phone = document.getElementById('regPhone').value;
-        body.name = document.getElementById('regName').value;
-        saveRegForm();
-      }
-
-      const res = await authFetch(`${API_BASE}/api/payment/upi-start`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-      });
-      const data = await res.json().catch(() => ({ success: false }));
-
-      if (!data.success) {
-        alert('❌ ' + (data.error || 'पेमेंट शुरू नहीं हो पाया'));
-        resetPayBtn();
-        return;
-      }
-
-      upiRef = data.ref;
-      upiLinkLast = data.upiLink;
-      try { localStorage.setItem('mg_upi', JSON.stringify(data)); } catch (e) {}
-      showUtrBox(data);
-      resetPayBtn();
-      window.location.href = data.upiLink;   // PhonePe/GPay खुलेगा
-    } catch (e) {
-      alert('🚨 सर्वर से कनेक्ट नहीं हो पा रहा: ' + e.message);
-      resetPayBtn();
-    }
-  }
-  function showOfflineUpiBox() {
   const now = document.getElementById('payNowBtn');
   now.disabled = true;
-  now.style.display = 'none'; // Button chhupa dega
-  document.getElementById('utrNotice').style.display = 'none'; // Warning chhupa dega
-  
-  // Amount set karega UPI Copy box mein
-  const amt = selectedPlan === 'yearly' ? '220' : '20';
-  document.getElementById('upiAmtTxt').innerText = amt;
-  
-  // Random reference number banayega
-  const randomRef = Math.floor(100000 + Math.random() * 900000);
-  document.getElementById('upiRefTxt2').innerText = 'MG-' + randomRef;
-  
-  // Seedha copy wala box dikhayega
-  document.getElementById('utrBox').style.display = 'block';
+  now.innerText = '⏳ कृपया रुकें...';
+
+  try {
+    const body = { plan: selectedPlan };
+    if (payMode === 'register') {
+      body.email = document.getElementById('regEmail').value;
+      body.phone = document.getElementById('regPhone').value;
+      body.name = document.getElementById('regName').value;
+      saveRegForm();
+    }
+
+    // 1. Backend ko request bhej kar database mein entry banwana
+    const res = await authFetch(`${API_BASE}/api/payment/upi-start`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({ success: false }));
+
+    if (!data.success) {
+      alert('❌ ' + (data.error || 'पेमेंट शुरू नहीं हो पाया'));
+      resetPayBtn();
+      return;
+    }
+
+    // 2. Asli Server Ref ID save karna
+    upiRef = data.ref;
+    upiLinkLast = data.upiLink;
+    try { localStorage.setItem('mg_upi', JSON.stringify(data)); } catch (e) {}
+
+    // 3. Niche wala Copy UPI Box dikhana
+    showUtrBox(data);
+    
+    // 4. Upar ka button aur warning chupana
+    now.style.display = 'none';
+    document.getElementById('utrNotice').style.display = 'none';
+    
+    // NOTE: Direct link open karne wala code hata diya gaya hai taaki error na aaye!
+  } catch (e) {
+    alert('🚨 सर्वर से कनेक्ट नहीं हो पा रहा: ' + e.message);
+    resetPayBtn();
+  }
 }
 
   // UPI Copy Function
@@ -2743,7 +2734,7 @@ async function handlePaymentReturn() {
       </label>
     </div>
 
-    <button class="submit-btn" id="payNowBtn" onclick="showOfflineUpiBox()" style="margin-top:6px;">भुगतान करें</button>
+    <button class="submit-btn" id="payNowBtn" onclick="startPayment()" style="margin-top:6px;">भुगतान करें</button>
     <p style="font-size:12px; color:var(--ink-soft); text-align:center; margin:8px 0 18px;">UPI से भुगतान। भुगतान के बाद UTR नंबर डालना होगा।</p>
 
     <div id="utrBox" style="display:none; background:#FFF8E1; border:1.5px dashed var(--haldi); border-radius:8px; padding:14px; margin-bottom:16px;">
