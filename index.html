@@ -943,12 +943,48 @@
 
     let planChosen = false;
 
-  function pickPlan(p) {
-    planChosen = true;
-    selectPlan(p);
-    document.getElementById('utrNotice').style.display = 'block';
-    updatePayBtnLock();
+  async function pickPlan(p) {
+  // 1. Plan select karo aur highlight karo
+  selectedPlan = p;
+  planChosen = true;
+  document.getElementById('plan-monthly').classList.toggle('sel', p === 'monthly');
+  document.getElementById('plan-yearly').classList.toggle('sel', p === 'yearly');
+
+  // 2. Beech wale faltu button aur notice ko hamesha ke liye chhupa do
+  if(document.getElementById('utrNotice')) document.getElementById('utrNotice').style.display = 'none';
+  if(document.getElementById('payNowBtn')) document.getElementById('payNowBtn').style.display = 'none';
+
+  // 3. Seedha Copy UPI wala box dikhao
+  document.getElementById('utrBox').style.display = 'block';
+  document.getElementById('upiAmtTxt').innerText = p === 'yearly' ? '220' : '20';
+  document.getElementById('upiRefTxt2').innerText = '⏳ जनरेट हो रहा है...';
+
+  // 4. Background mein DB entry banao (Taaki UTR submit fail na ho)
+  try {
+    const body = { plan: p };
+    if (payMode === 'register') {
+      body.email = document.getElementById('regEmail').value;
+      body.phone = document.getElementById('regPhone').value;
+      body.name = document.getElementById('regName').value;
+      saveRegForm();
+    }
+
+    const res = await authFetch(`${API_BASE}/api/payment/upi-start`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (data.success) {
+      upiRef = data.ref; // Asli ID save ho gayi
+      document.getElementById('upiRefTxt2').innerText = 'MG-' + data.ref; // Screen pe dikha di
+      try { localStorage.setItem('mg_upi', JSON.stringify(data)); } catch (e) {}
+    } else {
+      document.getElementById('upiRefTxt2').innerText = '❌ एरर, पेज रिफ्रेश करें';
+    }
+  } catch (e) {
+    document.getElementById('upiRefTxt2').innerText = '❌ कनेक्शन एरर';
   }
+}
 
   function updatePayBtnLock() {
     const now = document.getElementById('payNowBtn');
